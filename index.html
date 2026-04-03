@@ -119,6 +119,7 @@
             const fileInputRefCover = useRef(null);
             const [fileParsing, setFileParsing] = useState(false);
             const [isRegenerating, setIsRegenerating] = useState(false);
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
             
             // Loading Animation State
             const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
@@ -643,93 +644,81 @@
             // SIDEBAR LAYOUT
             // =========================
 
+            const navTo = (view) => {
+                setCurrentView(view);
+                setIsMobileMenuOpen(false);
+            };
+
             const renderSidebar = () => {
                 return (
-                    <div className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} transition-all duration-300 ease-in-out bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 hidden md:flex flex-col h-screen fixed left-0 top-0 shadow-sm z-50`}>
-                        <div className={`p-6 border-b border-slate-100 dark:border-slate-800 relative flex items-center h-[85px] ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
-                            {!isSidebarCollapsed && (
-                                <h1 onClick={() => setCurrentView('home')} className="text-lg font-extrabold text-slate-900 dark:text-white leading-tight overflow-hidden whitespace-nowrap cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                    <>
+                    {/* Mobile Overlay */}
+                    {isMobileMenuOpen && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>}
+                    
+                    <div className={`${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isSidebarCollapsed ? 'md:w-20' : 'md:w-64'} w-64 transition-transform duration-300 ease-in-out bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col h-screen fixed left-0 top-0 shadow-2xl md:shadow-sm z-50`}>
+                        {/* Mobile Close Button */}
+                        <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden absolute top-5 right-5 text-slate-500 hover:text-indigo-600 text-3xl font-light z-50">×</button>
+
+                        <div className={`p-6 border-b border-slate-100 dark:border-slate-800 relative flex items-center h-[85px] ${isSidebarCollapsed ? 'md:justify-center' : 'justify-between'}`}>
+                            {(!isSidebarCollapsed || isMobileMenuOpen) && (
+                                <h1 onClick={() => navTo('home')} className="text-lg font-extrabold text-slate-900 dark:text-white leading-tight overflow-hidden whitespace-nowrap cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                                     ATS Resume <br />
                                     <span className="text-indigo-600 dark:text-indigo-400">Analyzer</span>
                                 </h1>
                             )}
-                            {isSidebarCollapsed && (
-                                <div onClick={() => setCurrentView('home')} className="font-extrabold text-indigo-600 dark:text-indigo-400 text-2xl cursor-pointer">📝</div>
+                            {(isSidebarCollapsed && !isMobileMenuOpen) && (
+                                <div onClick={() => navTo('home')} className="font-extrabold text-indigo-600 dark:text-indigo-400 text-2xl cursor-pointer">📝</div>
                             )}
 
                             {/* Collapse Toggle Bubble */}
                             <button 
                                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                                className={`absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full shadow flex items-center justify-center text-slate-500 hover:text-indigo-600 transition-colors z-50 hover:scale-105`}
+                                className={`hidden md:flex absolute top-1/2 -translate-y-1/2 -right-4 w-8 h-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full shadow items-center justify-center text-slate-500 hover:text-indigo-600 transition-colors z-50 hover:scale-105`}
                             >
                                 {isSidebarCollapsed ? '→' : '←'}
                             </button>
                         </div>
                         
                         <div className="flex-1 py-6 flex flex-col gap-2 px-3 overflow-y-auto overflow-x-hidden relative">
-                            <button 
-                                onClick={() => setCurrentView('compare')} 
-                                className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'} ${currentView === 'compare' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'}`}
-                                title="Compare vs JD"
-                            >
+                            <button onClick={() => navTo('compare')} className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0 px-4' : 'px-4'} ${currentView === 'compare' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                 <span className="text-xl">📊</span> 
-                                {!isSidebarCollapsed && <span className="whitespace-nowrap">Compare vs JD</span>}
+                                {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="whitespace-nowrap">Compare vs JD</span>}
                             </button>
                             
-                            <button 
-                                onClick={() => setCurrentView('optimize')} 
-                                className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'} ${currentView === 'optimize' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'}`}
-                                title="Optimize Resume"
-                            >
+                            <button onClick={() => navTo('optimize')} className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0 px-4' : 'px-4'} ${currentView === 'optimize' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                 <span className="text-xl">✨</span> 
-                                {!isSidebarCollapsed && <span className="whitespace-nowrap">Optimize Resume</span>}
+                                {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="whitespace-nowrap">Optimize Resume</span>}
                             </button>
                             
                             <div className="my-2 border-t border-slate-100 dark:border-slate-800/50 w-full"></div>
                             
-                            <button 
-                                onClick={() => setCurrentView('coverletter')} 
-                                className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'} ${currentView === 'coverletter' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'}`}
-                                title="Cover Letter Builder"
-                            >
+                            <button onClick={() => navTo('coverletter')} className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0 px-4' : 'px-4'} ${currentView === 'coverletter' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                 <span className="text-xl">✉️</span> 
-                                {!isSidebarCollapsed && <span className="whitespace-nowrap">Cover Letter Builder</span>}
+                                {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="whitespace-nowrap">Cover Letter Builder</span>}
                             </button>
 
-                            <button 
-                                onClick={() => setCurrentView('interview')} 
-                                className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'} ${currentView === 'interview' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'}`}
-                                title="Mock Interview"
-                            >
+                            <button onClick={() => navTo('interview')} className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0 px-4' : 'px-4'} ${currentView === 'interview' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                 <span className="text-xl">🎙️</span> 
-                                {!isSidebarCollapsed && <span className="whitespace-nowrap">Mock Interview</span>}
+                                {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="whitespace-nowrap">Mock Interview</span>}
                             </button>
 
-                            <button 
-                                onClick={() => setCurrentView('history')} 
-                                className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'} ${currentView === 'history' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'}`}
-                                title="Application History"
-                            >
+                            <button onClick={() => navTo('history')} className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0 px-4' : 'px-4'} ${currentView === 'history' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                 <span className="text-xl">📈</span> 
-                                {!isSidebarCollapsed && <span className="whitespace-nowrap">Score Tracker</span>}
+                                {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="whitespace-nowrap">Score Tracker</span>}
                             </button>
                             
                             <div className="my-2 border-t border-slate-100 dark:border-slate-800/50 w-full"></div>
                             
-                            <button 
-                                onClick={() => setCurrentView('settings')} 
-                                className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'} ${currentView === 'settings' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-sm border border-transparent' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'}`}
-                                title="App Settings"
-                            >
+                            <button onClick={() => navTo('settings')} className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0 px-4' : 'px-4'} ${currentView === 'settings' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                 <span className="text-xl">⚙️</span> 
-                                {!isSidebarCollapsed && <span className="whitespace-nowrap">App Settings</span>}
+                                {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="whitespace-nowrap">App Settings</span>}
                             </button>
                         </div>
                         
                         <div className="px-4 py-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center relative">
                             <div className="flex items-center gap-3 w-full">
-                                <div title={isSidebarCollapsed ? "API Status" : ""} className={`shrink-0 w-3 h-3 rounded-full ${keyStatus === 'valid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : keyStatus === 'unverified' ? 'bg-slate-300 dark:bg-slate-600' : keyStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'}`}></div>
-                                {!isSidebarCollapsed && (
+                                <div title={isSidebarCollapsed && !isMobileMenuOpen ? "API Status" : ""} className={`shrink-0 w-3 h-3 rounded-full ${keyStatus === 'valid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : keyStatus === 'unverified' ? 'bg-slate-300 dark:bg-slate-600' : keyStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'} ${isSidebarCollapsed && !isMobileMenuOpen ? 'mx-auto' : ''}`}></div>
+                                {(!isSidebarCollapsed || isMobileMenuOpen) && (
                                     <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 truncate uppercase mt-0.5 tracking-wider">
                                         {keyStatus === 'valid' ? selectedModel.split('/')[1] || selectedModel : 'API Disconnected'}
                                     </div>
@@ -737,6 +726,7 @@
                             </div>
                         </div>
                     </div>
+                    </>
                 );
             };
 
@@ -1038,9 +1028,16 @@
             };
 
             return (
-                <div className="flex w-full min-h-screen">
+                <div className="flex w-full min-h-screen bg-white dark:bg-slate-900">
                     {renderSidebar()}
-                    <div className={`flex-1 transition-all duration-300 ease-in-out px-4 md:p-10 relative h-full ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} overflow-x-hidden w-full max-w-[100vw]`}>
+                    
+                    {/* Mobile Top Header */}
+                    <div className="md:hidden w-full h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 fixed top-0 left-0 z-30 flex items-center justify-between px-6 shadow-sm">
+                        <div onClick={() => navTo('home')} className="font-extrabold text-indigo-600 dark:text-indigo-400 text-xl cursor-pointer tracking-tight">AuraHome<span className="text-slate-800 dark:text-white">AI</span></div>
+                        <button onClick={() => setIsMobileMenuOpen(true)} className="text-2xl pt-1 pb-1 px-2 -mr-2 text-slate-800 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">☰</button>
+                    </div>
+
+                    <div className={`flex-1 transition-all duration-300 ease-in-out px-4 pt-24 md:pt-10 md:px-10 pb-10 relative h-full ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} overflow-x-hidden w-full max-w-[100vw]`}>
                         
                         {/* Background Deco */}
                         <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-indigo-100 dark:bg-indigo-900/10 rounded-full blur-[100px] -z-10 translate-x-[20%] -translate-y-[20%] pointer-events-none"></div>
