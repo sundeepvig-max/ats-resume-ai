@@ -18,7 +18,8 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; }
         
-        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.05); border: 1px solid rgba(226, 232, 240, 0.8); }
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.05); border: 1px solid rgba(226, 232, 240, 0.8); transition: all 0.2s ease;}
+        .glass-card:hover { box-shadow: 0 15px 50px rgba(0,0,0,0.08); }
         .shimmer-btn { position: relative; overflow: hidden; }
         .shimmer-btn::after {
             content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
@@ -27,11 +28,8 @@
         }
         @keyframes btn-shimmer { 100% { left: 200%; } }
 
-        .diff-added { background-color: #dcfce7; color: #166534; padding: 0 4px; border-radius: 4px; text-decoration: none; font-weight: 600;}
-        .diff-removed { background-color: #fee2e2; color: #991b1b; text-decoration: line-through; padding: 0 4px; border-radius: 4px;}
-        
         /* Circular Progress */
-        .circular-chart { display: block; margin: 0 auto; max-width: 80%; max-height: 250px; }
+        .circular-chart { display: block; margin: 0 auto; max-width: 100%; max-height: 250px; }
         .circle-bg { fill: none; stroke: #e2e8f0; stroke-width: 3.8; }
         .circle { fill: none; stroke-width: 3.8; stroke-linecap: round; animation: progress 1s ease-out forwards; }
         @keyframes progress { 0% { stroke-dasharray: 0 100; } }
@@ -45,13 +43,12 @@
         const { useState, useEffect, useRef } = React;
 
         function App() {
-            const [step, setStep] = useState('input'); // input, analyzing, results
-            const [activeMode, setActiveMode] = useState(null); // 'evaluate' or 'enhance'
-            const [activeTab, setActiveTab] = useState('score'); // score, diff, cover
+            // "home", "compare_setup", "optimize_setup", "analyzing", "results_compare", "results_optimize"
+            const [step, setStep] = useState('home'); 
             
             // API Settings & Credentials
             const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
-            const [keyStatus, setKeyStatus] = useState('unverified'); // unverified, checking, valid, invalid
+            const [keyStatus, setKeyStatus] = useState('unverified'); 
             const [availableModels, setAvailableModels] = useState([]);
             const [selectedModel, setSelectedModel] = useState('models/gemini-1.5-pro-latest');
 
@@ -62,17 +59,16 @@
             
             // Revisions state
             const [acceptedEnhancements, setAcceptedEnhancements] = useState({});
+            const [acceptedPointers, setAcceptedPointers] = useState({});
 
             const fileInputRef = useRef(null);
             const [fileParsing, setFileParsing] = useState(false);
+            const [isRegenerating, setIsRegenerating] = useState(false);
 
             useEffect(() => {
-                // Initialize PDF Worker
                 if (window.pdfjsLib) {
                     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
                 }
-                
-                // Auto validate 
                 if (apiKey) validateApiKey(apiKey);
             }, []);
 
@@ -117,7 +113,6 @@
                 setFileParsing(true);
                 const fileName = file.name.toLowerCase();
                 
-                // PDF Parsing
                 if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
                     const reader = new FileReader();
                     reader.onload = async (evt) => {
@@ -134,13 +129,12 @@
                             setResumeText(text);
                             setFileParsing(false);
                         } catch (err) {
-                            alert("Error parsing PDF structure locally: " + err);
+                            alert("Error parsing PDF: " + err);
                             setFileParsing(false);
                         }
                     };
                     reader.readAsArrayBuffer(file);
                 } 
-                // DOCX Parsing
                 else if (fileName.endsWith('.docx')) {
                     const reader = new FileReader();
                     reader.onload = async (evt) => {
@@ -149,13 +143,12 @@
                             setResumeText(result.value);
                             setFileParsing(false);
                         } catch(err) {
-                            alert("Error extracting DOCX locally: " + err);
+                            alert("Error extracting DOCX locally");
                             setFileParsing(false);
                         }
                     }
                     reader.readAsArrayBuffer(file);
                 }
-                // Plain Text / Default
                 else {
                     const reader = new FileReader();
                     reader.onload = (evt) => {
@@ -166,49 +159,28 @@
                 }
             };
 
-            const executeAnalysis = async (mode) => {
-                if(!jdText || !resumeText) { alert('Please provide both JD and Resume text.'); return; }
+            const executeCompareAlgorithm = async () => {
+                if(!jdText || !resumeText) { alert('Please provide both JD and Resume.'); return; }
                 if(keyStatus !== 'valid') { alert('Please validate your Gemini API Key first.'); return; }
                 
-                setActiveMode(mode);
                 setStep('analyzing');
-                setAcceptedEnhancements({});
+                setAcceptedPointers({});
                 
-                let prompt = "";
-                if (mode === 'evaluate') {
-                    prompt = `
-                        You are a Senior Technical Recruiter. Perform an ATS gap analysis.
-                        Job Description:
-                        ${jdText}
-                        Candidate Resume:
-                        ${resumeText}
-                        INSTRUCTION: Output strictly valid JSON answering the following:
-                        {
-                            "score": [number 0-100 indicating alignment],
-                            "missList": ["missing critical skill 1", "missing skill 2"],
-                            "atsWarning": "potential formatting warnings if resume structure is strange, null if okay"
-                        }
-                    `;
-                } else {
-                    prompt = `
-                        You are an Elite Resume Writer. Enhance the candidate's resume to match the JD via the STAR/XYZ methodology, ensuring extremely professional, ATS-optimized language. Do NOT hallucinate skills the user does not possess.
-                        Job Description:
-                        ${jdText}
-                        Candidate Resume:
-                        ${resumeText}
-                        INSTRUCTION: Output strictly valid JSON (No markdown blocks, raw JSON ONLY):
-                        {
-                            "score": [number 0-100 indicating alignment],
-                            "missList": ["missing critical skill 1", "missing skill 2"],
-                            "optimizedBullets": [
-                                { 
-                                    "original": "exact original sub-string to be replaced", 
-                                    "optimized": "The powerful ATS enhanced line utilizing action verbs and targeted keywords" 
-                                }
-                            ]
-                        }
-                    `;
-                }
+                const prompt = `
+                    You are a Senior Technical Recruiter. Compare the candidate's resume strictly against the target Job Description.
+                    Job Description:
+                    ${jdText}
+                    Candidate Resume:
+                    ${resumeText}
+                    INSTRUCTION: Output strictly valid JSON answering the following:
+                    {
+                        "score": [number 0-100 indicating percentage match],
+                        "summary": "A 2-3 sentence executive summary of how well the candidate aligns.",
+                        "matches": ["key requirement 1 mapped successfully", "key requirement 2 mapped successfully"],
+                        "missing": ["missing critical skill 1", "missing structural history 2"],
+                        "pointers": ["A specific action pointer recommending they inject X into their resume.", "Recommend they highlight Y more prominently."]
+                    }
+                `;
 
                 try {
                     const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
@@ -226,41 +198,133 @@
                     
                     const parsed = JSON.parse(rawResponse);
                     
-                    // Pre-select all enhancements as true by default
-                    if (parsed.optimizedBullets) {
-                        const preSelect = {};
-                        parsed.optimizedBullets.forEach((_, idx) => preSelect[idx] = true);
-                        setAcceptedEnhancements(preSelect);
-                        setActiveTab('diff'); // Switch to enhancement view directly
-                    } else {
-                        setActiveTab('score'); // Switch to evaluate view
-                    }
-                    
+                    // Default all pointers to false (rejected)
+                    const pState = {};
+                    if(parsed.pointers) parsed.pointers.forEach((_, i) => pState[i] = false);
+                    setAcceptedPointers(pState);
+
                     setApiData(parsed);
-                    setStep('results');
+                    setStep('results_compare');
                 } catch (err) {
                     alert("Analysis Failed: " + err.message);
-                    setStep('input');
+                    setStep('compare_setup');
                 }
             };
 
-            const toggleEnhancement = (index) => {
-                setAcceptedEnhancements(prev => ({
-                    ...prev,
-                    [index]: !prev[index]
-                }));
+            const executeOptimizeAlgorithm = async () => {
+                if(!resumeText) { alert('Please upload or paste a resume.'); return; }
+                if(keyStatus !== 'valid') { alert('Please validate your Gemini API Key first.'); return; }
+                
+                setStep('analyzing');
+                setAcceptedEnhancements({});
+                
+                const prompt = `
+                    You are an Elite Resume Optimizer. Enhance the candidate's resume focusing perfectly on massive impact phrasing utilizing the STAR (Situation, Task, Action, Result) methodology. Elevate the professional tone, but DO NOT hallucinate fake data.
+                    Candidate Resume:
+                    ${resumeText}
+                    INSTRUCTION: Output strictly valid JSON ONLY identifying areas that need rewriting:
+                    {
+                        "optimizedBullets": [
+                            { 
+                                "original": "the exact original underperforming sub-string from the input text", 
+                                "optimized": "The powerful, eye-catchy enhanced line utilizing action verbs." 
+                            }
+                        ]
+                    }
+                `;
+
+                try {
+                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                    });
+
+                    const data = await response.json();
+                    if(data.error) throw new Error(data.error.message);
+
+                    let rawResponse = data.candidates[0].content.parts[0].text;
+                    rawResponse = rawResponse.replace(/```json/g, '').replace(/```/g, ''); 
+                    const parsed = JSON.parse(rawResponse);
+                    
+                    // DEFAULT TO REJECT (false) AS PER REQUIREMENTS
+                    const defaultReject = {};
+                    if (parsed.optimizedBullets) {
+                        parsed.optimizedBullets.forEach((_, idx) => defaultReject[idx] = false);
+                    }
+                    setAcceptedEnhancements(defaultReject);
+                    
+                    setApiData(parsed);
+                    setStep('results_optimize');
+                } catch (err) {
+                    alert("Optimization Failed: " + err.message);
+                    setStep('optimize_setup');
+                }
             };
 
-            const generateUpdatedResume = () => {
+            const generatePointerInjectedResume = async () => {
+                const pointersToInject = apiData.pointers.filter((_, idx) => acceptedPointers[idx]);
+                
+                if(pointersToInject.length === 0) {
+                    alert("You haven't accepted any pointers. Please check at least one box to intelligently weave it into your resume.");
+                    return;
+                }
+
+                setIsRegenerating(true);
+                const prompt = `
+                    You are a Master Resume Architect. I am going to give you my current resume exactly as it is written.
+                    I am also going to give you a list of strict Pointers that I want you to weave/inject seamlessly into the resume.
+                    
+                    Candidate Resume:
+                    ${resumeText}
+                    
+                    Target Pointers To Inject Genuinely:
+                    ${JSON.stringify(pointersToInject)}
+                    
+                    INSTRUCTION: Output NOTHING but the raw plain text of the newly rewritten resume containing the injected parameters. Do not output markdown, JSON, or conversation. Just the text document formatting.
+                `;
+
+                try {
+                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                    });
+                    const data = await response.json();
+                    let newText = data.candidates[0].content.parts[0].text;
+                    
+                    const element = document.createElement("a");
+                    const file = new Blob([newText], {type: 'text/plain'});
+                    element.href = URL.createObjectURL(file);
+                    element.download = "Pointer_Injected_Resume.txt";
+                    document.body.appendChild(element); 
+                    element.click();
+
+                } catch (e) {
+                    alert("Regeneration failed! " + e.message);
+                } finally {
+                    setIsRegenerating(false);
+                }
+            };
+
+            const generateLocalReplacedResume = () => {
                 let updatedText = resumeText;
+                let changesMade = false;
+
                 apiData.optimizedBullets.forEach((bullet, idx) => {
                     if (acceptedEnhancements[idx]) {
-                        // Global replacement to avoid missing instances easily
                         updatedText = updatedText.replace(bullet.original, bullet.optimized);
+                        changesMade = true;
                     }
                 });
                 
-                // Construct a simple download
+                if(!changesMade) {
+                    alert("You must Accept at least one enhancement to generate an updated resume!");
+                    return;
+                }
+                
                 const element = document.createElement("a");
                 const file = new Blob([updatedText], {type: 'text/plain'});
                 element.href = URL.createObjectURL(file);
@@ -269,224 +333,275 @@
                 element.click();
             };
 
-            const renderInputScreen = () => (
-                <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 animate-fade-in relative pt-4">
-                    
-                    {/* Header Controls */}
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-sm border border-slate-200">
-                        {/* API Validation Left */}
-                        <div className="flex items-center w-full md:w-auto">
-                            <input 
-                                type="password" placeholder="Gemini API Key..." 
-                                value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyStatus('unverified'); }}
-                                className="bg-slate-50 border border-slate-300 border-r-0 text-sm px-3 py-2 rounded-l-lg w-full md:w-64 outline-none focus:ring-2 focus:ring-indigo-500" 
-                            />
-                            <button onClick={() => validateApiKey()} className="bg-slate-800 text-white text-xs font-bold px-4 py-2.5 hover:bg-slate-700 transition border-y border-r border-slate-800">
-                                {keyStatus === 'checking' ? 'Verifying...' : 'Validate'}
-                            </button>
-                            <div className="flex items-center justify-center bg-slate-100 border border-slate-300 border-l-0 rounded-r-lg px-3 py-2.5 h-[38px]">
-                                <div className={`w-3 h-3 rounded-full ${keyStatus === 'valid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : keyStatus === 'unverified' ? 'bg-red-500' : keyStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'}`}></div>
-                            </div>
-                        </div>
-                        
-                        {/* Model Right */}
-                        <div className="w-full md:w-auto flex items-center justify-end">
-                            {keyStatus === 'valid' && availableModels.length > 0 && (
-                                <div className="flex flex-col w-full md:w-auto">
-                                    <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-300 shadow-inner">
-                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Model Target:</span>
-                                        <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)} className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer w-full max-w-[250px]">
-                                            {availableModels.map(m => (
-                                                <option key={m.name} value={m.name}>{m.displayName} {m.name.includes('1.5-pro') ? '(Recommended)' : ''}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
+            const renderHeader = () => (
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-200 w-full mb-10 z-10 relative">
+                    <div className="flex items-center w-full md:w-auto">
+                        <input 
+                            type="password" placeholder="Gemini API Key..." 
+                            value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyStatus('unverified'); }}
+                            className="bg-slate-50 border border-slate-300 border-r-0 text-sm px-3 py-2 rounded-l-lg w-full md:w-64 outline-none focus:ring-2 focus:ring-indigo-500" 
+                        />
+                        <button onClick={() => validateApiKey()} className="bg-slate-800 text-white text-xs font-bold px-4 py-2.5 hover:bg-slate-700 transition border-y border-r border-slate-800">
+                            {keyStatus === 'checking' ? 'Verifying...' : 'Validate'}
+                        </button>
+                        <div className="flex items-center justify-center bg-slate-100 border border-slate-300 border-l-0 rounded-r-lg px-3 py-2.5 h-[38px]">
+                            <div className={`w-3 h-3 rounded-full ${keyStatus === 'valid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : keyStatus === 'unverified' ? 'bg-red-500' : keyStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'}`}></div>
                         </div>
                     </div>
                     
-                    <div className="text-center mb-6 mt-6">
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-800">ATS Resume <span className="text-indigo-600">Analyzer & Enhancer</span></h1>
-                        <p className="text-slate-500 mt-3 text-sm font-medium w-full max-w-3xl mx-auto">Compare your resume against any Job Description to measure your alignment, or utilize advanced Prompt Architecture to safely upgrade your impact statements specifically matching the employer's needs.</p>
-                        
+                    <div className="w-full md:w-auto flex items-center justify-end">
+                        {keyStatus === 'valid' && availableModels.length > 0 && (
+                            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-300 shadow-inner w-full md:w-auto">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Model Target:</span>
+                                <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)} className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer w-full max-w-[250px]">
+                                    {availableModels.map(m => (
+                                        <option key={m.name} value={m.name}>{m.displayName} {m.name.includes('1.5-pro') ? '(Recommended)' : ''}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+
+            // ==================
+            // COMPONENT SCREENS
+            // ==================
+
+            const renderHome = () => (
+                <div className="w-full max-w-5xl mx-auto flex flex-col items-center animate-fade-in relative z-10 pt-4">
+                    {renderHeader()}
+                    
+                    <div className="text-center mb-10 w-full">
+                        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 drop-shadow-sm">ATS Resume <span className="text-indigo-600 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Analyzer & Enhancer</span></h1>
+                        <p className="text-slate-500 mt-4 text-[15px] font-medium w-full max-w-2xl mx-auto">Select an architectural pathway below to execute deep natural language validation against your document payloads.</p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-8 w-full">
+                        <div onClick={() => setStep('compare_setup')} className="glass-card cursor-pointer p-10 flex flex-col items-center justify-center text-center border-2 border-transparent hover:border-indigo-400 group">
+                            <div className="w-20 h-20 bg-indigo-50 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-sm group-hover:scale-110 transition-transform">📊</div>
+                            <h2 className="text-2xl font-bold mb-3 text-slate-800">Compare Resume Against JD</h2>
+                            <p className="text-sm text-slate-500 leading-relaxed">Map your resume precisely against an employer's Job Description. Identify hard-skill gaps natively and generate tactical alignment scores.</p>
+                        </div>
+
+                        <div onClick={() => setStep('optimize_setup')} className="glass-card cursor-pointer p-10 flex flex-col items-center justify-center text-center border-2 border-transparent hover:border-indigo-400 group">
+                            <div className="w-20 h-20 bg-indigo-50 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-sm group-hover:scale-110 transition-transform">✨</div>
+                            <h2 className="text-2xl font-bold mb-3 text-slate-800">Optimize Resume Impact</h2>
+                            <p className="text-sm text-slate-500 leading-relaxed">Upload your document and let our AI engine automatically detect passive phrasing, offering line-by-line interactive STAR methodology upgrades.</p>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderCompareSetup = () => (
+                <div className="w-full max-w-7xl mx-auto animate-fade-in z-10 relative pt-4">
+                    {renderHeader()}
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={() => setStep('home')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Menu</button>
+                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Compare Against Job Description</h1>
                     </div>
 
                     <div className="grid lg:grid-cols-2 gap-8">
-                        {/* Target JD */}
-                        <div className="glass-card p-6 flex flex-col relative overflow-hidden">
+                        <div className="glass-card p-6 flex flex-col relative">
                             <h2 className="text-lg font-bold flex items-center gap-2 text-indigo-700 mb-4 tracking-tight">📄 Target Job Description</h2>
                             <textarea 
                                 value={jdText} onChange={e => setJdText(e.target.value)}
-                                placeholder="Paste the target Job Description here...&#10;We extract hard skill constraints, organizational culture, and key deliverables natively." 
-                                className="flex-1 w-full bg-slate-50/50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[300px] text-sm relative z-10"
+                                placeholder="Paste the target Job Description exactly..." 
+                                className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[350px] text-sm"
                             ></textarea>
                         </div>
 
-                        {/* Current Resume */}
-                        <div className="glass-card p-6 flex flex-col relative overflow-hidden">
-                            <div className="flex items-center justify-between mb-4 relative z-10">
+                        <div className="glass-card p-6 flex flex-col relative">
+                            <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-lg font-bold flex items-center gap-2 text-blue-700 tracking-tight">👤 Current Resume</h2>
-                                
-                                <button onClick={triggerFileUpload} disabled={fileParsing} className={`text-xs font-bold px-4 py-2 rounded-lg transition border shadow-sm ${fileParsing ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-900 text-white border-slate-800 hover:bg-slate-800'}`}>
-                                    {fileParsing ? '⚙️ Parsing...' : '📁 Upload Resume'}
-                                </button>
-                                <input type="file" ref={fileInputRef} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleFileUpload} />
+                                <button onClick={triggerFileUpload} className="text-xs font-bold px-4 py-2 rounded-lg bg-slate-900 text-white shadow-sm hover:bg-slate-800">📁 Upload Resume</button>
+                                <input type="file" ref={fileInputRef} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={handleFileUpload} />
                             </div>
-                            
                             <textarea 
-                                value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={fileParsing}
-                                placeholder="Upload your resume in any format (PDF, DOCX, TXT) or directly paste the text here...&#10;&#10;Our robust parsers convert binaries into optimized strings autonomously." 
-                                className="flex-1 w-full bg-slate-50/50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[300px] text-sm relative z-10"
+                                value={resumeText} onChange={e => setResumeText(e.target.value)}
+                                placeholder="Upload or paste your resume here..." 
+                                className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[350px] text-sm"
                             ></textarea>
-                            
-                            {fileParsing && (
-                                <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
-                                    <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
-                                    <p className="mt-4 text-sm font-bold text-slate-700">Native Neural Extraction Running...</p>
-                                </div>
-                            )}
                         </div>
                     </div>
-
-                    <div className="flex flex-col md:flex-row justify-center gap-6 mt-8 mb-10">
-                        <button onClick={() => executeAnalysis('evaluate')} className="bg-white border-2 border-slate-300 text-slate-700 px-8 py-5 rounded-2xl font-bold text-lg hover:border-slate-400 hover:bg-slate-50 transition shadow-sm flex flex-col items-center text-center">
-                            <span>📊 Evaluate Alignment</span>
-                            <span className="text-xs font-normal text-slate-500 mt-1">Audit Score & Keywords only</span>
+                    <div className="flex justify-center mt-6">
+                        <button onClick={executeCompareAlgorithm} className="shimmer-btn bg-indigo-600 border border-indigo-700 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-xl mt-2 mb-10 tracking-widest">
+                            EXECUTE COMPARISON ENGINE →
                         </button>
-                        
-                        <button onClick={() => executeAnalysis('enhance')} className="shimmer-btn bg-slate-900 border-2 border-slate-900 text-white px-8 py-5 rounded-2xl font-bold text-lg hover:bg-slate-800 hover:border-slate-800 transition shadow-xl shadow-slate-900/20 flex flex-col items-center text-center">
-                            <span>✨ Evaluate & Enhance Resume</span>
-                            <span className="text-xs font-normal text-slate-300 mt-1">Audit + Smart Action Rewrites</span>
+                    </div>
+                </div>
+            );
+
+            const renderOptimizeSetup = () => (
+                <div className="w-full max-w-4xl mx-auto animate-fade-in z-10 relative pt-4">
+                    {renderHeader()}
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={() => setStep('home')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Menu</button>
+                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Optimize Impact Architecture</h1>
+                    </div>
+
+                    <div className="glass-card p-8 flex flex-col relative">
+                        <div className="flex flex-col md:flex-row items-center justify-between mb-6 shadow-sm border border-slate-100 bg-white p-4 rounded-xl">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800 tracking-tight">Upload Your Document</h2>
+                                <p className="text-xs text-slate-500">Supports PDF, DOCX, and TXT binary buffering natively.</p>
+                            </div>
+                            <button onClick={triggerFileUpload} className="text-sm mt-4 md:mt-0 font-bold px-6 py-3 rounded-lg bg-slate-900 text-white hover:bg-slate-800 tracking-widest uppercase">📁 Select Resume File</button>
+                            <input type="file" ref={fileInputRef} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={handleFileUpload} />
+                        </div>
+                        <textarea 
+                            value={resumeText} onChange={e => setResumeText(e.target.value)}
+                            placeholder="File text buffer output will actively populate here..." 
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-6 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-[400px] text-sm font-mono shadow-inner"
+                        ></textarea>
+                    </div>
+                    
+                    <div className="flex justify-center mt-6">
+                        <button onClick={executeOptimizeAlgorithm} className="shimmer-btn bg-indigo-600 border border-indigo-700 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-xl mt-2 mb-10 tracking-widest">
+                            EXECUTE OPTIMIZATION ENGINE →
                         </button>
                     </div>
                 </div>
             );
 
             const renderAnalyzing = () => (
-                <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-20 text-center">
+                <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-20 text-center z-10 relative">
                     <div className="w-20 h-20 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin mb-8 shadow-lg"></div>
-                    <h2 className="text-3xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-slate-800 tracking-tight">Intelligent Verification Processing...</h2>
-                    <ul className="text-slate-500 text-left space-y-4 font-medium mt-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md">
-                        <li className="flex items-center gap-3 text-indigo-700 font-bold"><span className="text-xl animate-pulse">⏳</span> Generating mapping vectors against requirements...</li>
-                        {activeMode === 'enhance' && (
-                            <li className="flex items-center gap-3 opacity-80"><span className="text-xl animate-pulse">⏳</span> Aligning outputs strictly to authentic inputs...</li>
-                        )}
-                    </ul>
+                    <h2 className="text-3xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-slate-800 tracking-tight">
+                        {isRegenerating ? "Weaving Final Architecture..." : "LLM Execution Pipeline..."}
+                    </h2>
                 </div>
             );
 
-            const renderResults = () => {
+            // ==================
+            // RESULTS SCREENS
+            // ==================
+
+            const renderCompareResults = () => {
                 if(!apiData) return null;
-                
                 return (
-                    <div className="w-full max-w-7xl mx-auto animate-fade-in relative z-10 pt-4">
-                        <div className="flex items-center justify-between mb-8">
-                            <div className="flex items-center gap-4">
-                                <button onClick={() => setStep('input')} className="bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Return to Editor</button>
-                                <h1 className="text-2xl font-bold text-slate-900 hidden sm:block tracking-tight">{activeMode === 'evaluate' ? 'Alignment Report' : 'Optimization Studio'}</h1>
-                            </div>
-                            <div className="text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full tracking-widest shadow-sm flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
-                                {selectedModel}
+                    <div className="w-full max-w-6xl mx-auto animate-fade-in relative z-10 pt-4 pb-12">
+                        {renderHeader()}
+                        <div className="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+                            <button onClick={() => setStep('compare_setup')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Resume Editor</button>
+                            <h2 className="text-2xl font-bold text-slate-800">Alignment Report</h2>
+                        </div>
+
+                        <div className="glass-card p-6 md:p-10 mb-8 border-t-4 border-t-indigo-500">
+                            <div className="flex flex-col md:flex-row items-center gap-10">
+                                <div className="w-48 relative shrink-0">
+                                    <svg viewBox="0 0 36 36" className="circular-chart text-indigo-600 drop-shadow-md">
+                                        <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <path className="circle" strokeDasharray={`${apiData.score || 0}, 100`} stroke="currentColor" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <text x="18" y="20.35" className="percentage">{apiData.score || 0}%</text>
+                                    </svg>
+                                    <p className="text-center text-xs font-bold text-slate-500 mt-4 tracking-widest uppercase">Match Index</p>
+                                </div>
+                                <div className="flex-1 text-center md:text-left">
+                                    <h3 className="text-2xl font-bold mb-3">Executive Summary</h3>
+                                    <p className="text-slate-600 leading-relaxed text-lg bg-indigo-50/50 p-5 rounded-xl border border-indigo-100">{apiData.summary}</p>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="flex flex-col lg:flex-row gap-6">
-                            {/* Sidebar Navi */}
-                            <div className="w-full lg:w-64 flex flex-col gap-2.5 shrink-0">
-                                <button onClick={() => setActiveTab('score')} className={`text-left px-5 py-4 rounded-xl font-bold transition border tracking-tight ${activeTab === 'score' ? 'bg-slate-900 text-white border-slate-800 shadow-lg' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>📊 Gap Score</button>
-                                {activeMode === 'enhance' && (
-                                    <button onClick={() => setActiveTab('diff')} className={`text-left px-5 py-4 rounded-xl font-bold transition border tracking-tight ${activeTab === 'diff' ? 'bg-slate-900 text-white border-slate-800 shadow-lg' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>⚖️ Enhancement Studio</button>
-                                )}
+                        <div className="grid md:grid-cols-2 gap-8 mb-8">
+                            <div className="glass-card p-6 rounded-xl border-t-4 border-t-green-400">
+                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-green-700">✅ Key Alignments</h3>
+                                <ul className="space-y-3">
+                                    {apiData.matches && apiData.matches.map((item, i) => (
+                                        <li key={i} className="flex gap-3 text-sm text-slate-700"><span className="text-green-500">✓</span> {item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div className="glass-card p-6 rounded-xl border-t-4 border-t-red-400">
+                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-red-700">❌ Missing Variables</h3>
+                                <ul className="space-y-3">
+                                    {apiData.missing && apiData.missing.map((item, i) => (
+                                        <li key={i} className="flex gap-3 text-sm text-slate-700"><span className="text-red-500 font-bold">!</span> {item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div className="bg-white border-2 border-indigo-200 rounded-2xl p-8 shadow-xl">
+                            <div className="flex justify-between items-center mb-6">
+                                <div>
+                                    <h3 className="text-2xl font-bold tracking-tight text-slate-900">Recommended Generative Modifications</h3>
+                                    <p className="text-sm text-slate-500 mt-1">Accept the tactical pointers below. Our LLM will natively weave your accepted recommendations securely into your resume.</p>
+                                </div>
+                                <button onClick={generatePointerInjectedResume} className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-3 rounded-xl shadow-md transition text-sm">
+                                    Inject Pointers & Generate Resume ↓
+                                </button>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                {apiData.pointers && apiData.pointers.map((pointer, i) => (
+                                    <div key={i} className={`p-4 rounded-xl border-2 flex items-center gap-4 transition ${acceptedPointers[i] ? 'border-indigo-400 bg-indigo-50/50' : 'border-slate-200 bg-slate-50'}`}>
+                                        <button 
+                                            onClick={() => setAcceptedPointers(prev => ({...prev, [i]: !prev[i]}))}
+                                            className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center font-bold transition border-2 ${acceptedPointers[i] ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 text-transparent'}`}
+                                        >✓</button>
+                                        <p className={`text-sm ${acceptedPointers[i] ? 'text-indigo-900 font-medium' : 'text-slate-600'}`}>{pointer}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )
+            };
+
+            const renderOptimizeResults = () => {
+                if(!apiData) return null;
+                return (
+                    <div className="w-full max-w-7xl mx-auto animate-fade-in relative z-10 pt-4 pb-12">
+                        {renderHeader()}
+                        <div className="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
+                            <button onClick={() => setStep('optimize_setup')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Upload Target</button>
+                            <button onClick={generateLocalReplacedResume} className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-8 py-3 rounded-xl shadow-lg transition">
+                                Compile Final Resume ↓
+                            </button>
+                        </div>
+
+                        <div className="glass-card flex flex-col h-full bg-white/60">
+                            <div className="p-8 pb-4">
+                                <h3 className="text-2xl font-bold tracking-tight mb-2 text-slate-800">Line-by-Line Impact Mapping</h3>
+                                <p className="text-sm text-slate-500 font-medium px-4 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg inline-block">
+                                    Note: All algorithm enhancements are explicitly REJECTED by default. You must click Accept to merge them into your final compilation.
+                                </p>
                             </div>
 
-                            {/* Content Area */}
-                            <div className="flex-1 glass-card p-6 md:p-10 min-h-[500px]">
-                                
-                                {/* SCORE TAB */}
-                                {activeTab === 'score' && (
-                                    <div className="space-y-8 animate-fade-in">
-                                        <div className="flex flex-col md:flex-row items-center gap-10 border-b border-slate-100 pb-10">
-                                            <div className="w-48 relative">
-                                                <svg viewBox="0 0 36 36" className="circular-chart text-indigo-600 drop-shadow-md">
-                                                    <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                                    <path className="circle" strokeDasharray={`${apiData.score || 0}, 100`} stroke="currentColor" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                                    <text x="18" y="20.35" className="percentage">{apiData.score || 0}%</text>
-                                                </svg>
-                                                <p className="text-center text-xs font-bold text-slate-500 mt-4 tracking-widest uppercase">ATS Match Projection</p>
-                                            </div>
-                                            <div className="flex-1">
-                                                <h3 className="text-xl font-bold mb-4 tracking-tight">The "Miss List" Tracker</h3>
-                                                {apiData.missList && apiData.missList.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-2.5 mb-6">
-                                                        {apiData.missList.map((skill, idx) => (
-                                                            <span key={idx} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-xs font-bold shadow-sm flex items-center gap-2">
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>{skill}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-sm bg-green-50 border border-green-200 p-4 rounded-xl text-green-700 font-bold mb-6 flex items-center gap-3">
-                                                        <span className="text-2xl">🏆</span> Incredible! No major missing hard skills detected against JD parameters.
-                                                    </p>
-                                                )}
-                                                
-                                                {apiData.atsWarning && (
-                                                    <div className="p-5 bg-orange-50 border border-orange-200 rounded-xl mb-4 shadow-sm">
-                                                        <h4 className="font-bold text-orange-800 flex items-center gap-2 mb-2 tracking-tight">⚠️ Structural Warning Detected</h4>
-                                                        <p className="text-sm text-orange-700 leading-relaxed">{apiData.atsWarning}</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* DIFF TAB (Option 2 Content) */}
-                                {activeTab === 'diff' && activeMode === 'enhance' && (
-                                    <div className="animate-fade-in flex flex-col h-full">
-                                        <div className="flex justify-between items-end mb-6">
-                                            <div>
-                                                <h3 className="text-2xl font-bold mb-2 tracking-tight">Line-by-Line Refinement</h3>
-                                                <p className="text-sm text-slate-500">Review enhanced statements. Accept or reject the recommended variations below.</p>
-                                            </div>
-                                            <button onClick={generateUpdatedResume} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-md transition whitespace-nowrap text-sm">
-                                                Generate Updated Resume ↓
+                            <div className="space-y-6 flex-1 px-8 pb-10">
+                                {apiData.optimizedBullets && apiData.optimizedBullets.length > 0 ? apiData.optimizedBullets.map((b, i) => (
+                                    <div key={i} className={`p-6 rounded-2xl border-2 transition shadow-sm ${acceptedEnhancements[i] ? 'border-emerald-400 bg-emerald-50/10' : 'border-slate-200 bg-white'}`}>
+                                        <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                                            <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400">Statement Identification #{i + 1}</h4>
+                                            
+                                            <button 
+                                                onClick={() => setAcceptedEnhancements(prev => ({...prev, [i]: !prev[i]}))}
+                                                className={`text-xs font-bold px-5 py-2 rounded-lg transition shadow-sm border-2 ${acceptedEnhancements[i] ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200 ring-2 ring-emerald-500/20' : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'}`}
+                                            >
+                                                {acceptedEnhancements[i] ? '✓ ACTIVE: INJECT STATEMENT' : '✗ REJECTED: KEEP ORIGINAL'}
                                             </button>
                                         </div>
-
-                                        <div className="space-y-6 flex-1 overflow-y-auto pr-2 pb-10">
-                                            {apiData.optimizedBullets && apiData.optimizedBullets.length > 0 ? apiData.optimizedBullets.map((b, i) => (
-                                                <div key={i} className={`p-5 rounded-2xl border-2 transition ${acceptedEnhancements[i] ? 'border-green-400 bg-green-50/20' : 'border-slate-200 bg-white opacity-80'}`}>
-                                                    <div className="flex justify-between items-center mb-4">
-                                                        <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400">Impact Statement #{i + 1}</h4>
-                                                        <button 
-                                                            onClick={() => toggleEnhancement(i)}
-                                                            className={`text-xs font-bold px-4 py-1.5 rounded-full transition shadow-sm ${acceptedEnhancements[i] ? 'bg-green-100 text-green-700 border border-green-200 hover:bg-green-200' : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'}`}
-                                                        >
-                                                            {acceptedEnhancements[i] ? '✓ Accepted' : '✗ Rejected'}
-                                                        </button>
-                                                    </div>
-                                                    
-                                                    <div className="grid md:grid-cols-2 gap-6">
-                                                        <div>
-                                                            <span className="inline-block px-2 py-1 bg-slate-100 text-slate-500 rounded text-[10px] font-bold mb-2">Original Context</span>
-                                                            <p className="text-sm font-mono text-slate-600 bg-white border border-slate-200 p-3 rounded-lg line-through decoration-red-400/50 decoration-2">{b.original}</p>
-                                                        </div>
-                                                        <div>
-                                                            <span className="inline-block px-2 py-1 bg-indigo-50 text-indigo-500 rounded text-[10px] font-bold mb-2">ATS Optimized Trajectory</span>
-                                                            <p className="text-sm font-mono text-slate-800 bg-white border border-indigo-100 shadow-sm p-3 rounded-lg"><span className="bg-green-100/50">{b.optimized}</span></p>
-                                                        </div>
-                                                    </div>
+                                        
+                                        <div className="grid md:grid-cols-2 gap-8">
+                                            <div className="relative">
+                                                <span className="absolute top-[-10px] left-4 px-2 bg-white text-rose-500 rounded text-[10px] uppercase font-extrabold tracking-widest">Original Parse</span>
+                                                <div className="text-sm font-mono text-slate-500 bg-slate-50 border border-slate-200 px-4 py-6 rounded-xl line-through decoration-rose-300 decoration-2">
+                                                    {b.original}
                                                 </div>
-                                            )) : (
-                                                    <p className="text-sm text-slate-500 italic p-6 text-center border-2 border-dashed border-slate-200 rounded-xl">No specific optimizable lines located, or exact matching logic failed. Ensure your resume has descriptive bullets.</p>
-                                            )}
+                                            </div>
+                                            <div className="relative">
+                                                <span className="absolute top-[-10px] left-4 px-2 bg-white text-emerald-600 rounded text-[10px] uppercase font-extrabold tracking-widest flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Enhanced Alignment</span>
+                                                <div className={`text-sm font-menu bg-white border px-4 py-6 rounded-xl shadow-inner font-medium leading-relaxed transition ${acceptedEnhancements[i] ? 'text-emerald-900 border-emerald-300 shadow-[inset_0_0_15px_rgba(16,185,129,0.1)]' : 'text-slate-800 border-slate-200'}`}>
+                                                    {b.optimized}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
+                                )) : (
+                                    <p className="text-sm text-slate-500 italic p-10 text-center border-2 border-dashed border-slate-300 rounded-2xl bg-white/50">No optimization targets algorithmically detected. Ensure context implies actionable history.</p>
                                 )}
-
                             </div>
                         </div>
                     </div>
@@ -497,9 +612,14 @@
                 <div className="min-h-screen p-4 md:p-8 text-slate-800 pb-20 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-indigo-50 rounded-full blur-3xl opacity-50 -z-10 translate-x-[40%] -translate-y-[40%] pointer-events-none"></div>
                     
-                    {step === 'input' && renderInputScreen()}
+                    {step === 'home' && renderHome()}
+                    {step === 'compare_setup' && renderCompareSetup()}
+                    {step === 'optimize_setup' && renderOptimizeSetup()}
+                    
                     {step === 'analyzing' && renderAnalyzing()}
-                    {step === 'results' && renderResults()}
+                    
+                    {step === 'results_compare' && renderCompareResults()}
+                    {step === 'results_optimize' && renderOptimizeResults()}
                 </div>
             );
         }
@@ -507,10 +627,5 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-
-    <style>
-        .animate-fade-in { animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
-    </style>
 </body>
 </html>
