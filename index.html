@@ -105,6 +105,7 @@
             // System State
             const fileInputRefCompare = useRef(null);
             const fileInputRefOptimize = useRef(null);
+            const fileInputRefSettings = useRef(null);
             const [fileParsing, setFileParsing] = useState(false);
             const [isRegenerating, setIsRegenerating] = useState(false);
             
@@ -637,12 +638,18 @@
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 px-2">Auto mode connects dynamically to your local chronological hour. Shifts strictly between 6 PM to 6 AM.</p>
                     </div>
 
-                    <div className="glass-card p-8 mt-6">
-                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-slate-100">👤 Default Resume</h3>
+                    <div className="glass-card p-8 mt-6 relative">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-3">
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">👤 Default Resume</h3>
+                            <button onClick={() => fileInputRefSettings.current.click()} disabled={fileParsing} className="text-xs shrink-0 font-bold px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 text-white shadow-sm hover:bg-slate-800 disabled:opacity-50 transition">
+                                📁 Upload File (PDF/DOCX)
+                            </button>
+                            <input type="file" ref={fileInputRefSettings} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={(e) => handleFileUpload(e, setSavedResumeSetting)} />
+                        </div>
                         <p className="text-slate-500 dark:text-slate-400 mb-4 text-sm">Save a default resume here so you don't have to upload it every time you scan against a new JD. Uploading a file in the main tools will temporarily override this.</p>
                         <textarea 
-                            value={savedResumeSetting} onChange={e => setSavedResumeSetting(e.target.value)}
-                            placeholder="Paste your default resume text here..." 
+                            value={savedResumeSetting} onChange={e => setSavedResumeSetting(e.target.value)} disabled={fileParsing}
+                            placeholder="Extracted text will appear here. Or just paste your resume directly..." 
                             className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-5 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[200px] text-sm dark:text-white shadow-inner"
                         ></textarea>
                         <button 
