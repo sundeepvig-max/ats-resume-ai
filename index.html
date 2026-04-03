@@ -690,8 +690,6 @@
                                 {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="whitespace-nowrap">Optimize Resume</span>}
                             </button>
                             
-                            <div className="my-2 border-t border-slate-100 dark:border-slate-800/50 w-full"></div>
-                            
                             <button onClick={() => navTo('coverletter')} className={`flex items-center gap-3 py-3 rounded-xl font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0 px-4' : 'px-4'} ${currentView === 'coverletter' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                 <span className="text-xl">✉️</span> 
                                 {(!isSidebarCollapsed || isMobileMenuOpen) && <span className="whitespace-nowrap">Cover Letter Builder</span>}
@@ -1043,12 +1041,36 @@
                         <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-indigo-100 dark:bg-indigo-900/10 rounded-full blur-[100px] -z-10 translate-x-[20%] -translate-y-[20%] pointer-events-none"></div>
 
                         {currentView === 'home' && (
-                            <div className="w-full max-w-4xl mx-auto animate-fade-in pt-20 pb-20 text-center">
-                                <h1 className="text-5xl md:text-6xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-6">Welcome to <span className="text-indigo-600 dark:text-indigo-400">CareerForge AI</span></h1>
-                                <p className="text-xl text-slate-600 dark:text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed">Your end-to-end local platform for ruthlessly analyzing, building, and simulating your entire job application to bypass modern ATS filters.</p>
-                                <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
-                                    <button onClick={() => setCurrentView('compare')} className="shimmer-btn bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition w-full sm:w-auto">Compare vs JD →</button>
-                                    <button onClick={() => setCurrentView('optimize')} className="bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-100 dark:border-slate-700 px-8 py-4 rounded-xl font-bold text-lg hover:border-indigo-300 dark:hover:border-indigo-500 shadow-sm transition w-full sm:w-auto">Optimize Resume ✨</button>
+                            <div className="w-full max-w-6xl mx-auto animate-fade-in pt-12 md:pt-20 pb-20 text-center">
+                                <h1 className="text-4xl md:text-6xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-6">Welcome to <span className="text-indigo-600 dark:text-indigo-400">CareerForge AI</span></h1>
+                                <p className="text-lg md:text-xl text-slate-600 dark:text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed">Your end-to-end local platform for ruthlessly analyzing, building, and simulating your entire job application to bypass modern ATS filters.</p>
+                                
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-left mt-8 md:mt-16">
+                                    <div onClick={() => navTo('compare')} className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 hover:ring-2 hover:ring-indigo-500 cursor-pointer transition-all hover:-translate-y-1 shadow-sm hover:shadow-xl group flex flex-col h-full">
+                                        <div className="text-4xl mb-4 group-hover:scale-110 transition-transform origin-left">📊</div>
+                                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Compare vs JD</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium flex-1">Find out what recruiters immediately see when comparing your resume gaps against the targeted role.</p>
+                                    </div>
+                                    <div onClick={() => navTo('optimize')} className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 hover:ring-2 hover:ring-indigo-500 cursor-pointer transition-all hover:-translate-y-1 shadow-sm hover:shadow-xl group flex flex-col h-full">
+                                        <div className="text-4xl mb-4 group-hover:scale-110 transition-transform origin-left">✨</div>
+                                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Optimize Resume</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium flex-1">Automatically fix syntax issues and convert passive statements into hard-hitting STAR-format bullet points.</p>
+                                    </div>
+                                    <div onClick={() => navTo('coverletter')} className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 hover:ring-2 hover:ring-indigo-500 cursor-pointer transition-all hover:-translate-y-1 shadow-sm hover:shadow-xl group flex flex-col h-full">
+                                        <div className="text-4xl mb-4 group-hover:scale-110 transition-transform origin-left">✉️</div>
+                                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Cover Letter Engine</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium flex-1">Generate concise or extensive highly-persuasive cover letters matched to the exact job description data.</p>
+                                    </div>
+                                    <div onClick={() => navTo('interview')} className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 hover:ring-2 hover:ring-indigo-500 cursor-pointer transition-all hover:-translate-y-1 shadow-sm hover:shadow-xl group flex flex-col h-full lg:col-span-1 lg:col-start-1 lg:ml-[50%] w-full">
+                                        <div className="text-4xl mb-4 group-hover:scale-110 transition-transform origin-left">🎙️</div>
+                                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Mock Interviewer</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium flex-1">Simulate a tough HR screening. The AI parses your resume and grills you purely based on experience gaps.</p>
+                                    </div>
+                                    <div onClick={() => navTo('history')} className="bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 hover:ring-2 hover:ring-indigo-500 cursor-pointer transition-all hover:-translate-y-1 shadow-sm hover:shadow-xl group flex flex-col h-full lg:col-span-1 lg:col-start-2 lg:ml-[50%] w-full">
+                                        <div className="text-4xl mb-4 group-hover:scale-110 transition-transform origin-left">📈</div>
+                                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Score Tracker</h3>
+                                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium flex-1">Track your job applications over time, saving historical Match % scores automatically right in your browser.</p>
+                                    </div>
                                 </div>
                             </div>
                         )}
