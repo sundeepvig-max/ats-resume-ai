@@ -6,6 +6,11 @@
     <title>ATS Resume Analyzer & Enhancer</title>
     <!-- Zero-Build Environment -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,84 +21,137 @@
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; }
+        body { font-family: 'Inter', sans-serif; transition: background-color 0.3s ease, color 0.3s ease; }
         
-        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.05); border: 1px solid rgba(226, 232, 240, 0.8); transition: all 0.2s ease;}
+        .glass-card { 
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.05); border: 1px solid rgba(226, 232, 240, 0.8); transition: all 0.2s ease;
+        }
+        .dark .glass-card {
+            background: rgba(30, 41, 59, 0.95); border: 1px solid rgba(51, 65, 85, 0.8); box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
         .glass-card:hover { box-shadow: 0 15px 50px rgba(0,0,0,0.08); }
+        .dark .glass-card:hover { box-shadow: 0 15px 50px rgba(0,0,0,0.4); }
+
         .shimmer-btn { position: relative; overflow: hidden; }
         .shimmer-btn::after {
             content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-            animation: btn-shimmer 2s infinite;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            animation: btn-shimmer 2.5s infinite;
         }
         @keyframes btn-shimmer { 100% { left: 200%; } }
 
         /* Circular Progress */
         .circular-chart { display: block; margin: 0 auto; max-width: 100%; max-height: 250px; }
         .circle-bg { fill: none; stroke: #e2e8f0; stroke-width: 3.8; }
-        .circle { fill: none; stroke-width: 3.8; stroke-linecap: round; animation: progress 1s ease-out forwards; }
+        .dark .circle-bg { stroke: #334155; }
+        .circle { fill: none; stroke-width: 3.8; stroke-linecap: round; animation: progress 1s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
         @keyframes progress { 0% { stroke-dasharray: 0 100; } }
         .percentage { fill: #1e293b; font-family: sans-serif; font-size: 0.5em; text-anchor: middle; font-weight: bold;}
+        .dark .percentage { fill: #f8fafc; }
+
+        .progress-bar-container { width: 100%; height: 6px; background-color: #e2e8f0; border-radius: 10px; overflow: hidden; margin-top: 15px; }
+        .dark .progress-bar-container { background-color: #334155; }
+        .progress-bar-fill { height: 100%; background-color: #4f46e5; transition: width 0.3s ease; }
     </style>
 </head>
-<body>
-    <div id="root"></div>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100 min-h-screen flex">
+    <div id="root" class="w-full h-full min-h-screen flex"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
         function App() {
-            // "home", "compare_setup", "optimize_setup", "analyzing", "results_compare", "results_optimize"
-            const [step, setStep] = useState('home'); 
+            // Navigation Routing
+            const [currentView, setCurrentView] = useState('compare'); // compare, optimize, settings
+
+            // UI Flow step per module
+            const [compareStep, setCompareStep] = useState('input'); // input, analyzing, results
+            const [optimizeStep, setOptimizeStep] = useState('input'); // input, analyzing, results
             
-            // API Settings & Credentials
+            // Global Settings
             const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
             const [keyStatus, setKeyStatus] = useState('unverified'); 
             const [availableModels, setAvailableModels] = useState([]);
             const [selectedModel, setSelectedModel] = useState('models/gemini-1.5-pro-latest');
+            const [isDarkMode, setIsDarkMode] = useState(localStorage.getItem('theme') === 'dark');
 
-            // Data Payloads
+            // Form Data
             const [jdText, setJdText] = useState('');
             const [resumeText, setResumeText] = useState('');
-            const [apiData, setApiData] = useState(null);
             
-            // Revisions & UI State
+            // Results Data
+            const [apiDataCompare, setApiDataCompare] = useState(null);
+            const [apiDataOptimize, setApiDataOptimize] = useState(null);
             const [acceptedEnhancements, setAcceptedEnhancements] = useState({});
             const [acceptedPointers, setAcceptedPointers] = useState({});
-            const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
 
-            const fileInputRef = useRef(null);
+            // System State
+            const fileInputRefCompare = useRef(null);
+            const fileInputRefOptimize = useRef(null);
             const [fileParsing, setFileParsing] = useState(false);
             const [isRegenerating, setIsRegenerating] = useState(false);
+            
+            // Loading Animation State
+            const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+            const [loadingProgress, setLoadingProgress] = useState(0);
 
             const loadingMessages = [
-                "Scanning document structure...",
-                "Extracting technical artifacts & metrics...",
-                "Cross-referencing heavily against Job Description...",
-                "Applying tough recruiter scrutiny standards...",
-                "Identifying critical skill gaps natively...",
-                "Deriving algorithmic match percentage...",
-                "Finalizing strict QA context..."
+                "Scanning your document...",
+                "Reading your history and skills...",
+                "Comparing your experience thoroughly to the job requirements...",
+                "Applying strict recruiter standards...",
+                "Looking for critical skill gaps...",
+                "Calculating your match percentage...",
+                "Finalizing recommendations..."
             ];
 
+            // Setup dependencies on mount
             useEffect(() => {
                 if (window.pdfjsLib) {
                     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
                 }
                 if (apiKey) validateApiKey(apiKey);
+                
+                // Initialize Dark Mode
+                if (isDarkMode) document.documentElement.classList.add('dark');
             }, []);
 
-            // Dynamic loading message system
+            // Dark Mode Toggle Watcher
             useEffect(() => {
-                let interval;
-                if (step === 'analyzing') {
-                    setLoadingMessageIndex(0);
-                    interval = setInterval(() => {
-                        setLoadingMessageIndex(prev => (prev < loadingMessages.length - 1 ? prev + 1 : prev));
-                    }, 1800);
+                if(isDarkMode) {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
                 }
-                return () => clearInterval(interval);
-            }, [step]);
+            }, [isDarkMode]);
+
+            // Unified Loading Animation Watcher
+            useEffect(() => {
+                let textInterval, progInterval;
+                const isAnalyzing = compareStep === 'analyzing' || optimizeStep === 'analyzing';
+                
+                if (isAnalyzing) {
+                    setLoadingMessageIndex(0);
+                    setLoadingProgress(0);
+                    
+                    // Slow, readable text transitions
+                    textInterval = setInterval(() => {
+                        setLoadingMessageIndex(prev => (prev < loadingMessages.length - 1 ? prev + 1 : prev));
+                    }, 3000);
+
+                    // Simulated fluid progress bar
+                    progInterval = setInterval(() => {
+                        setLoadingProgress(prev => {
+                            if (prev >= 92) return 92; // Lock at 92% until api technically finishes
+                            return prev + Math.floor(Math.random() * 4) + 1;
+                        });
+                    }, 400);
+                }
+                return () => { clearInterval(textInterval); clearInterval(progInterval); };
+            }, [compareStep, optimizeStep]);
+
 
             const validateApiKey = async (keyToTest) => {
                 const targetKey = keyToTest || apiKey;
@@ -125,11 +183,7 @@
                 }
             };
 
-            const triggerFileUpload = () => {
-                if (fileInputRef.current) fileInputRef.current.click();
-            };
-
-            const handleFileUpload = async (e) => {
+            const handleFileUpload = async (e, setTargetText) => {
                 const file = e.target.files[0];
                 if (!file) return;
 
@@ -149,10 +203,10 @@
                                 const strings = content.items.map(item => item.str);
                                 text += strings.join(' ') + '\n';
                             }
-                            setResumeText(text);
-                            setFileParsing(false);
+                            setTargetText(text);
                         } catch (err) {
                             alert("Error parsing PDF locally: " + err);
+                        } finally {
                             setFileParsing(false);
                         }
                     };
@@ -163,10 +217,10 @@
                     reader.onload = async (evt) => {
                         try {
                             const result = await mammoth.extractRawText({ arrayBuffer: evt.target.result });
-                            setResumeText(result.value);
-                            setFileParsing(false);
+                            setTargetText(result.value);
                         } catch(err) {
-                            alert("Error extracting DOCX locally");
+                            alert("Error extracting DOCX locally.");
+                        } finally {
                             setFileParsing(false);
                         }
                     }
@@ -175,23 +229,27 @@
                 else {
                     const reader = new FileReader();
                     reader.onload = (evt) => {
-                        setResumeText(evt.target.result);
+                        setTargetText(evt.target.result);
                         setFileParsing(false);
                     };
                     reader.readAsText(file);
                 }
             };
 
+            // =========================
+            // COMPARE RESUME ENGINE
+            // =========================
+
             const executeCompareAlgorithm = async () => {
-                if(!jdText || !resumeText) { alert('Please provide both JD and Resume.'); return; }
-                if(keyStatus !== 'valid') { alert('Please validate your Gemini API Key first.'); return; }
+                if(!jdText || !resumeText) { alert('Please provide both the Job Description and your Resume.'); return; }
+                if(keyStatus !== 'valid') { alert('Please validate your AI Key in Settings first.'); setCurrentView('settings'); return; }
                 
-                setStep('analyzing');
+                setCompareStep('analyzing');
                 setAcceptedPointers({});
                 
                 const prompt = `
-                    You are an elite, ruthlessly tough Senior Technical Recruiter at a top-tier employer. You process thousands of resumes and heavily penalize candidates for fluff, missing data, and weak keyword integration. 
-                    Act strictly as a gatekeeper. Scrutinize this Candidate Resume against the Job Description constraints without mercy.
+                    You are a tough, detail-oriented Senior Technical Recruiter. Review this resume aggressively against the exact Job Description requirements.
+                    Do not assume skills they haven't explicitly listed.
                     
                     Job Description:
                     ${jdText}
@@ -199,17 +257,17 @@
                     Candidate Resume:
                     ${resumeText}
                     
-                    INSTRUCTION: Output strictly valid JSON answering the following schema natively:
+                    INSTRUCTION: Output strictly valid JSON answering the following schema:
                     {
-                        "score": [Number 0-100 indicating match percentage. BE EXTREMELY TOUGH. If they miss required skills, penalize this severely.],
-                        "summary": "A 2-3 sentence ruthless executive summary of how well the candidate actually aligns, calling out major flaws explicitly.",
+                        "score": [Number 0-100 indicating match percentage. Be extremely strict.],
+                        "summary": "A friendly 2-3 sentence summary explaining how well their experience matches the job overall.",
                         "matches": [
-                            { "skill": "The precise skill/experience located in resume", "jdLink": "Why the JD explicitly requires this" }
+                            { "skill": "What matched nicely", "jdLink": "Why this was important for the job" }
                         ],
                         "missing": [
-                            { "skill": "The precise missing constraint from the JD", "jdLink": "The severe reality of what missing this skill means for their chances" }
+                            { "skill": "The exact skill or requirement missing", "jdLink": "Why missing this hurts their chances" }
                         ],
-                        "pointers": ["Actionable recommendation 1 to inject into resume", "Actionable recommendation 2"]
+                        "pointers": ["A specific change they can make to their resume to improve their match score"]
                     }
                 `;
 
@@ -229,36 +287,90 @@
                     
                     const parsed = JSON.parse(rawResponse);
                     
-                    // Default all pointers to false (rejected)
                     const pState = {};
                     if(parsed.pointers) parsed.pointers.forEach((_, i) => pState[i] = false);
                     setAcceptedPointers(pState);
 
-                    setApiData(parsed);
-                    setStep('results_compare');
+                    setLoadingProgress(100);
+                    setTimeout(() => {
+                        setApiDataCompare(parsed);
+                        setCompareStep('results');
+                    }, 500);
+
                 } catch (err) {
-                    alert("Analysis Failed: " + err.message);
-                    setStep('compare_setup');
+                    alert("Analysis Failed. Please check network or API rate limits. Error: " + err.message);
+                    setCompareStep('input');
                 }
             };
 
-            const executeOptimizeAlgorithm = async () => {
-                if(!resumeText) { alert('Please upload or paste a resume.'); return; }
-                if(keyStatus !== 'valid') { alert('Please validate your Gemini API Key first.'); return; }
+            const generatePointerInjectedResume = async () => {
+                const pointersToInject = apiDataCompare.pointers.filter((_, idx) => acceptedPointers[idx]);
                 
-                setStep('analyzing');
+                if(pointersToInject.length === 0) {
+                    alert("Please select at least one checkmark recommendation to add to your resume!");
+                    return;
+                }
+
+                setIsRegenerating(true);
+                const prompt = `
+                    I am giving you my current resume. Please rewrite it slightly by seamlessly incorporating the exact improvements I listed below. Do not drastically change the format, just add the new details professionally.
+                    
+                    Candidate Resume:
+                    ${resumeText}
+                    
+                    Improvements to Add:
+                    ${JSON.stringify(pointersToInject)}
+                    
+                    INSTRUCTION: Output only the raw plain text of the newly rewritten resume. Do not use JSON or explanation.
+                `;
+
+                try {
+                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                    });
+                    const data = await response.json();
+                    let newText = data.candidates[0].content.parts[0].text;
+                    
+                    const element = document.createElement("a");
+                    const file = new Blob([newText], {type: 'text/plain'});
+                    element.href = URL.createObjectURL(file);
+                    element.download = "Improved_Resume.txt";
+                    document.body.appendChild(element); 
+                    element.click();
+
+                } catch (e) {
+                    alert("Generation failed... " + e.message);
+                } finally {
+                    setIsRegenerating(false);
+                }
+            };
+
+            // =========================
+            // OPTIMIZE RESUME ENGINE
+            // =========================
+
+            const executeOptimizeAlgorithm = async () => {
+                if(!resumeText) { alert('Please upload or paste your resume first.'); return; }
+                if(keyStatus !== 'valid') { alert('Please validate your AI Key in Settings first.'); setCurrentView('settings'); return; }
+                
+                setOptimizeStep('analyzing');
                 setAcceptedEnhancements({});
                 
                 const prompt = `
-                    You are an Elite Resume Optimizer. Enhance the candidate's resume focusing perfectly on massive impact phrasing utilizing the STAR (Situation, Task, Action, Result) methodology. Elevate the professional tone, but DO NOT hallucinate fake data.
+                    You are an expert Resume Writer. Your goal is to rewrite passive or boring resume bullet points into strong, professional STAR (Situation, Task, Action, Result) formatted bullets using strong action verbs. Do not invent fake experience.
+                    
                     Candidate Resume:
                     ${resumeText}
-                    INSTRUCTION: Output strictly valid JSON ONLY identifying areas that need rewriting:
+                    
+                    INSTRUCTION: Output strictly valid JSON with lines that can be improved:
                     {
                         "optimizedBullets": [
                             { 
-                                "original": "the exact original underperforming sub-string from the input text", 
-                                "optimized": "The powerful, visually-appealing enhanced line utilizing action verbs." 
+                                "original": "exact original sentence from resume", 
+                                "optimized": "The strongly written professional improvement" 
                             }
                         ]
                     }
@@ -281,61 +393,19 @@
                     
                     const defaultReject = {};
                     if (parsed.optimizedBullets) {
-                        parsed.optimizedBullets.forEach((_, idx) => defaultReject[idx] = false);
+                        parsed.optimizedBullets.forEach((_, idx) => defaultReject[idx] = false); // Default rejected
                     }
                     setAcceptedEnhancements(defaultReject);
                     
-                    setApiData(parsed);
-                    setStep('results_optimize');
+                    setLoadingProgress(100);
+                    setTimeout(() => {
+                        setApiDataOptimize(parsed);
+                        setOptimizeStep('results');
+                    }, 500);
+
                 } catch (err) {
-                    alert("Optimization Failed: " + err.message);
-                    setStep('optimize_setup');
-                }
-            };
-
-            const generatePointerInjectedResume = async () => {
-                const pointersToInject = apiData.pointers.filter((_, idx) => acceptedPointers[idx]);
-                
-                if(pointersToInject.length === 0) {
-                    alert("You haven't accepted any pointers. Please check at least one box to intelligently weave it into your resume.");
-                    return;
-                }
-
-                setIsRegenerating(true);
-                const prompt = `
-                    You are a Master Resume Architect. I am going to give you my current resume.
-                    I am also giving you a list of strict Pointers that I want you to weave seamlessly into the resume.
-                    
-                    Candidate Resume:
-                    ${resumeText}
-                    
-                    Target Pointers To Inject Genuinely:
-                    ${JSON.stringify(pointersToInject)}
-                    
-                    INSTRUCTION: Output NOTHING but the raw plain text of the newly rewritten resume containing the injected parameters. Do not output markdown, JSON, or conversation. Just the raw text document formatting.
-                `;
-
-                try {
-                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-                    });
-                    const data = await response.json();
-                    let newText = data.candidates[0].content.parts[0].text;
-                    
-                    const element = document.createElement("a");
-                    const file = new Blob([newText], {type: 'text/plain'});
-                    element.href = URL.createObjectURL(file);
-                    element.download = "Pointer_Injected_Resume.txt";
-                    document.body.appendChild(element); 
-                    element.click();
-
-                } catch (e) {
-                    alert("Regeneration failed! " + e.message);
-                } finally {
-                    setIsRegenerating(false);
+                    alert("Optimization Failed. Error: " + err.message);
+                    setOptimizeStep('input');
                 }
             };
 
@@ -343,7 +413,7 @@
                 let updatedText = resumeText;
                 let changesMade = false;
 
-                apiData.optimizedBullets.forEach((bullet, idx) => {
+                apiDataOptimize.optimizedBullets.forEach((bullet, idx) => {
                     if (acceptedEnhancements[idx]) {
                         updatedText = updatedText.replace(bullet.original, bullet.optimized);
                         changesMade = true;
@@ -351,325 +421,378 @@
                 });
                 
                 if(!changesMade) {
-                    alert("You must Accept at least one enhancement to generate an updated resume!");
+                    alert("You must click 'Accept' on at least one enhancement to download the updated resume!");
                     return;
                 }
                 
                 const element = document.createElement("a");
                 const file = new Blob([updatedText], {type: 'text/plain'});
                 element.href = URL.createObjectURL(file);
-                element.download = "Optimized_Resume.txt";
+                element.download = "Professionally_Rewritten_Resume.txt";
                 document.body.appendChild(element); 
                 element.click();
             };
 
-            const renderHeader = () => (
-                <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-200 w-full mb-10 z-10 relative">
-                    <div className="flex items-center w-full md:w-auto">
-                        <input 
-                            type="password" placeholder="Gemini API Key..." 
-                            value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyStatus('unverified'); }}
-                            className="bg-slate-50 border border-slate-300 border-r-0 text-sm px-3 py-2 rounded-l-lg w-full md:w-64 outline-none focus:ring-2 focus:ring-indigo-500" 
-                        />
-                        <button onClick={() => validateApiKey()} className="bg-slate-800 text-white text-xs font-bold px-4 py-2.5 hover:bg-slate-700 transition border-y border-r border-slate-800">
-                            {keyStatus === 'checking' ? 'Verifying...' : 'Validate'}
+            // =========================
+            // SHARED COMPONENTS
+            // =========================
+
+            const renderLoadingState = () => (
+                <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-32 text-center relative">
+                    <div className="w-24 h-24 mb-6 relative">
+                        <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-700"></div>
+                        <div className="absolute inset-0 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center font-bold text-sm text-slate-500 dark:text-slate-400">
+                            {loadingProgress}%
+                        </div>
+                    </div>
+                    
+                    <div className="h-16 flex items-center justify-center w-full">
+                        <h2 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight transition-all duration-300">
+                            {loadingMessages[loadingMessageIndex] || "Working on it..."}
+                        </h2>
+                    </div>
+                    
+                    <div className="w-full max-w-sm mt-4 progress-bar-container shadow-inner">
+                        <div className="progress-bar-fill" style={{ width: `${loadingProgress}%` }}></div>
+                    </div>
+                </div>
+            );
+
+
+            // =========================
+            // SIDEBAR LAYOUT
+            // =========================
+
+            const renderSidebar = () => (
+                <div className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 hidden md:flex flex-col h-screen fixed left-0 top-0 shadow-sm z-50">
+                    <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+                        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white leading-tight">ATS Resume <br/><span className="text-indigo-600 dark:text-indigo-400">Analyzer</span></h1>
+                    </div>
+                    <div className="flex-1 py-6 flex flex-col gap-2 px-4">
+                        <button onClick={() => setCurrentView('compare')} className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${currentView === 'compare' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                            <span className="text-xl">📊</span> Compare vs JD
                         </button>
-                        <div className="flex items-center justify-center bg-slate-100 border border-slate-300 border-l-0 rounded-r-lg px-3 py-2.5 h-[38px] w-[38px] shrink-0">
-                            <div className={`w-3 h-3 rounded-full ${keyStatus === 'valid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : keyStatus === 'unverified' ? 'bg-red-500' : keyStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'}`}></div>
-                        </div>
-                    </div>
-                    
-                    <div className="w-full md:w-auto flex items-center justify-end">
-                        {keyStatus === 'valid' && availableModels.length > 0 && (
-                            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-300 shadow-inner w-full md:w-auto">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Model Target:</span>
-                                <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)} className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer w-full max-w-[250px]">
-                                    {availableModels.map(m => (
-                                        <option key={m.name} value={m.name}>{m.displayName} {m.name.includes('1.5-pro') ? '(Recommended)' : ''}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-
-            // ==================
-            // COMPONENT SCREENS
-            // ==================
-
-            const renderHome = () => (
-                <div className="w-full max-w-5xl mx-auto flex flex-col items-center animate-fade-in relative z-10 pt-4">
-                    {renderHeader()}
-                    
-                    <div className="text-center mb-10 w-full">
-                        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 drop-shadow-sm">ATS Resume <span className="text-indigo-600 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Analyzer & Enhancer</span></h1>
-                        <p className="text-slate-500 mt-4 text-[15px] font-medium w-full max-w-2xl mx-auto">Select an architectural pathway below to execute deep natural language validation against your document payloads.</p>
-                    </div>
-
-                    <div className="grid md:grid-cols-2 gap-8 w-full">
-                        <div onClick={() => setStep('compare_setup')} className="glass-card cursor-pointer p-10 flex flex-col items-center justify-center text-center border-2 border-transparent hover:border-indigo-400 group">
-                            <div className="w-20 h-20 bg-indigo-50 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-sm group-hover:scale-110 transition-transform">📊</div>
-                            <h2 className="text-2xl font-bold mb-3 text-slate-800">Compare Resume Against JD</h2>
-                            <p className="text-sm text-slate-500 leading-relaxed">Map your resume precisely against an employer's Job Description. Identify hard-skill gaps natively and generate tactical alignment scores.</p>
-                        </div>
-
-                        <div onClick={() => setStep('optimize_setup')} className="glass-card cursor-pointer p-10 flex flex-col items-center justify-center text-center border-2 border-transparent hover:border-indigo-400 group">
-                            <div className="w-20 h-20 bg-indigo-50 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-sm group-hover:scale-110 transition-transform">✨</div>
-                            <h2 className="text-2xl font-bold mb-3 text-slate-800">Optimize Resume Impact</h2>
-                            <p className="text-sm text-slate-500 leading-relaxed">Upload your document and let our AI engine automatically detect passive phrasing, offering line-by-line interactive STAR methodology upgrades.</p>
-                        </div>
-                    </div>
-                </div>
-            );
-
-            const renderCompareSetup = () => (
-                <div className="w-full max-w-7xl mx-auto animate-fade-in z-10 relative pt-4">
-                    {renderHeader()}
-                    <div className="flex items-center gap-4 mb-6">
-                        <button onClick={() => setStep('home')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Menu</button>
-                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Compare Against Job Description</h1>
-                    </div>
-
-                    <div className="grid lg:grid-cols-2 gap-8">
-                        <div className="glass-card p-6 flex flex-col relative">
-                            <h2 className="text-lg font-bold flex items-center gap-2 text-indigo-700 mb-4 tracking-tight">📄 Target Job Description</h2>
-                            <textarea 
-                                value={jdText} onChange={e => setJdText(e.target.value)}
-                                placeholder="Paste the target Job Description exactly..." 
-                                className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[350px] text-sm"
-                            ></textarea>
-                        </div>
-
-                        <div className="glass-card p-6 flex flex-col relative">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-bold flex items-center gap-2 text-blue-700 tracking-tight">👤 Current Resume</h2>
-                                <button onClick={triggerFileUpload} className="text-xs font-bold px-4 py-2 rounded-lg bg-slate-900 text-white shadow-sm hover:bg-slate-800">📁 Upload Resume</button>
-                                <input type="file" ref={fileInputRef} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={handleFileUpload} />
-                            </div>
-                            <textarea 
-                                value={resumeText} onChange={e => setResumeText(e.target.value)}
-                                placeholder="Upload or paste your resume here..." 
-                                className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[350px] text-sm"
-                            ></textarea>
-                        </div>
-                    </div>
-                    <div className="flex justify-center mt-6">
-                        <button onClick={executeCompareAlgorithm} className="shimmer-btn bg-indigo-600 border border-indigo-700 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-xl mt-2 mb-10 tracking-widest tracking-wide">
-                            Start Resume Comparison →
+                        <button onClick={() => setCurrentView('optimize')} className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${currentView === 'optimize' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                            <span className="text-xl">✨</span> Formatter Tool
+                        </button>
+                        <button onClick={() => setCurrentView('settings')} className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${currentView === 'settings' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                            <span className="text-xl">⚙️</span> App Settings
                         </button>
                     </div>
-                </div>
-            );
-
-            const renderOptimizeSetup = () => (
-                <div className="w-full max-w-4xl mx-auto animate-fade-in z-10 relative pt-4">
-                    {renderHeader()}
-                    <div className="flex items-center gap-4 mb-6">
-                        <button onClick={() => setStep('home')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Menu</button>
-                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Optimize Impact Architecture</h1>
-                    </div>
-
-                    <div className="glass-card p-8 flex flex-col relative">
-                        <div className="flex flex-col md:flex-row items-center justify-between mb-6 shadow-sm border border-slate-100 bg-white p-4 rounded-xl">
-                            <div>
-                                <h2 className="text-lg font-bold text-slate-800 tracking-tight">Upload Your Document</h2>
-                                <p className="text-xs text-slate-500">Supports PDF, DOCX, and TXT parsing natively.</p>
-                            </div>
-                            <button onClick={triggerFileUpload} className="text-sm mt-4 md:mt-0 font-bold px-6 py-3 rounded-lg bg-slate-900 text-white hover:bg-slate-800 tracking-widest uppercase">📁 Select Resume File</button>
-                            <input type="file" ref={fileInputRef} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={handleFileUpload} />
+                    <div className="p-4 border-t border-slate-100 dark:border-slate-800 relative">
+                        <div className="flex items-center gap-3 w-full p-2">
+                             <div className={`w-3 h-3 rounded-full shrink-0 ${keyStatus === 'valid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : keyStatus === 'unverified' ? 'bg-slate-300 dark:bg-slate-600' : keyStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'}`}></div>
+                             <div className="text-xs font-bold text-slate-500 dark:text-slate-400 truncate">
+                                {keyStatus === 'valid' ? selectedModel : 'API Key Setup Needed'}
+                             </div>
                         </div>
-                        <textarea 
-                            value={resumeText} onChange={e => setResumeText(e.target.value)}
-                            placeholder="File text payload will strictly populate here..." 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-6 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-[400px] text-sm font-mono shadow-inner"
-                        ></textarea>
-                    </div>
-                    
-                    <div className="flex justify-center mt-6">
-                        <button onClick={executeOptimizeAlgorithm} className="shimmer-btn bg-indigo-600 border border-indigo-700 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-xl mt-2 mb-10 tracking-wide">
-                            Start Optimization Pipeline →
-                        </button>
                     </div>
                 </div>
             );
 
-            const renderAnalyzing = () => (
-                <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-20 text-center z-10 relative">
-                    <div className="w-20 h-20 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin mb-10 shadow-lg"></div>
-                    
-                    <div className="h-16 flex items-center justify-center">
-                        {isRegenerating ? (
-                            <h2 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-800 tracking-tight animate-pulse">
-                                Merging Updates into Resume...
-                            </h2>
-                        ) : (
-                            <h2 className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-slate-800 tracking-tight transition-all duration-300 keyframe-fade">
-                                {loadingMessages[loadingMessageIndex] || "Executing..."}
-                            </h2>
-                        )}
-                    </div>
-                </div>
-            );
+            // =========================
+            // VIEW MODULES
+            // =========================
 
-            // ==================
-            // RESULTS SCREENS
-            // ==================
+            const renderSettings = () => (
+                <div className="animate-fade-in pt-8 max-w-4xl max-w-4xl mx-auto pb-20">
+                    <h2 className="text-3xl font-extrabold text-slate-800 dark:text-white mb-2">Application Settings</h2>
+                    <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium">Configure your core AI integration and visual preferences here.</p>
 
-            const renderCompareResults = () => {
-                if(!apiData) return null;
-                return (
-                    <div className="w-full max-w-6xl mx-auto animate-fade-in relative z-10 pt-4 pb-12">
-                        {renderHeader()}
-                        <div className="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
-                            <button onClick={() => setStep('compare_setup')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Resume Editor</button>
-                            <h2 className="text-2xl font-bold text-slate-800">Recruiter Alignment Report</h2>
-                        </div>
-
-                        <div className="glass-card p-6 md:p-10 mb-8 border-t-4 border-t-indigo-500">
-                            <div className="flex flex-col md:flex-row items-center gap-10">
-                                <div className="w-48 relative shrink-0">
-                                    <svg viewBox="0 0 36 36" className="circular-chart text-indigo-600 drop-shadow-md">
-                                        <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                        <path className="circle" strokeDasharray={`${apiData.score || 0}, 100`} stroke="currentColor" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                        <text x="18" y="20.35" className="percentage">{apiData.score || 0}%</text>
-                                    </svg>
-                                    <p className="text-center text-[10px] font-bold text-slate-500 mt-4 tracking-widest uppercase">Strict Match Index</p>
-                                </div>
-                                <div className="flex-1 text-center md:text-left">
-                                    <h3 className="text-2xl font-bold mb-3">Executive Scrutiny Summary</h3>
-                                    <p className="text-slate-700 leading-relaxed text-lg bg-indigo-50/50 p-5 rounded-xl border border-indigo-100">{apiData.summary}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid md:grid-cols-2 gap-8 mb-8">
-                            <div className="glass-card p-6 rounded-xl border-t-4 border-t-emerald-400">
-                                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-emerald-800">✅ Key Validated Alignments</h3>
-                                <ul className="space-y-5">
-                                    {apiData.matches && apiData.matches.map((item, i) => (
-                                        <li key={i} className="flex gap-4 text-sm text-slate-700 items-start">
-                                            <span className="text-emerald-500 font-extrabold mt-0.5 text-lg">✓</span> 
-                                            <div>
-                                                <strong className="block text-slate-800 text-[15px]">{item.skill}</strong>
-                                                <span className="text-xs text-slate-500 italic block mt-1 leading-relaxed"><strong className="text-emerald-700/60 not-italic">Satisfies JD:</strong> {item.jdLink}</span>
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                            <div className="glass-card p-6 rounded-xl border-t-4 border-t-rose-500 shadow-[0_4px_25px_rgba(225,29,72,0.05)]">
-                                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-rose-800">⚠️ Critical Missing Requirements</h3>
-                                <ul className="space-y-5">
-                                    {apiData.missing && apiData.missing.map((item, i) => (
-                                        <li key={i} className="flex gap-4 text-sm text-slate-700 items-start">
-                                            <span className="text-rose-500 font-extrabold mt-0.5 text-lg">!</span> 
-                                            <div>
-                                                <strong className="block text-slate-800 text-[15px]">{item.skill}</strong>
-                                                <span className="text-xs text-rose-600/80 italic block mt-1 leading-relaxed"><strong className="text-rose-800/60 not-italic">Rejection Threat:</strong> {item.jdLink}</span>
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-
-                        <div className="bg-white border-2 border-indigo-200 rounded-2xl p-8 shadow-xl">
-                            <div className="flex flex-col md:flex-row justify-between md:items-center gap-5 mb-6">
-                                <div>
-                                    <h3 className="text-2xl font-bold tracking-tight text-slate-900">Recommended Generative Pointers</h3>
-                                    <p className="text-sm text-slate-500 mt-1">Accept the tactical pointers below. Our LLM will natively weave your accepted recommendations correctly into your resume layout to dramatically boost your match percentage.</p>
-                                </div>
-                                <button onClick={generatePointerInjectedResume} className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-4 rounded-xl shadow-md transition text-sm whitespace-nowrap shrink-0 border border-slate-700">
-                                    Inject Pointers & Generate Resume ↓
-                                </button>
-                            </div>
-                            
-                            <div className="space-y-4">
-                                {apiData.pointers && apiData.pointers.map((pointer, i) => (
-                                    <div key={i} className={`p-4 rounded-xl border-2 flex items-center gap-4 transition ${acceptedPointers[i] ? 'border-indigo-400 bg-indigo-50/50 shadow-inner' : 'border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100'}`} onClick={() => setAcceptedPointers(prev => ({...prev, [i]: !prev[i]}))}>
-                                        <button 
-                                            className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center font-bold transition border-2 ${acceptedPointers[i] ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 text-transparent'}`}
-                                        >✓</button>
-                                        <p className={`text-sm ${acceptedPointers[i] ? 'text-indigo-900 font-medium' : 'text-slate-600'}`}>{pointer}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )
-            };
-
-            const renderOptimizeResults = () => {
-                if(!apiData) return null;
-                return (
-                    <div className="w-full max-w-7xl mx-auto animate-fade-in relative z-10 pt-4 pb-12">
-                        {renderHeader()}
-                        <div className="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
-                            <button onClick={() => setStep('optimize_setup')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Upload Target</button>
-                            <button onClick={generateLocalReplacedResume} className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-8 py-3 rounded-xl shadow-lg transition">
-                                Compile Final Resume ↓
+                    <div className="glass-card p-8 mb-6">
+                        <h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-slate-100 flex items-center gap-2">🔑 Gemini AI Network Key</h3>
+                        
+                        <div className="flex flex-col md:flex-row gap-4 max-w-xl">
+                            <input 
+                                type="password" placeholder="Paste your API Key..." 
+                                value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyStatus('unverified'); }}
+                                className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm px-4 py-3 rounded-xl flex-1 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white shadow-inner" 
+                            />
+                            <button onClick={() => validateApiKey()} className="bg-slate-900 border border-slate-800 text-white font-bold px-6 py-3 rounded-xl hover:bg-slate-800 shadow-md transition whitespace-nowrap">
+                                {keyStatus === 'checking' ? 'Verifying...' : 'Validate Key'}
                             </button>
                         </div>
+                        
+                        {keyStatus === 'valid' && (
+                            <div className="mt-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-xl text-sm font-medium text-green-800 dark:text-green-300 flex items-center gap-3">
+                                <span>✅</span> Validated securely against Google endpoints.
+                            </div>
+                        )}
+                        {keyStatus === 'invalid' && (
+                            <div className="mt-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl text-sm font-medium text-red-800 dark:text-red-300 flex items-center gap-3">
+                                <span>❌</span> Key declined. Check key accuracy and limits.
+                            </div>
+                        )}
+                    </div>
 
-                        <div className="glass-card flex flex-col h-full bg-white/60">
-                            <div className="p-8 pb-4">
-                                <h3 className="text-2xl font-bold tracking-tight mb-2 text-slate-800">Line-by-Line Impact Mapping</h3>
-                                <p className="text-sm text-slate-500 font-medium px-4 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg inline-block">
-                                    Note: All algorithm enhancements are explicitly REJECTED by default. You must click Accept to merge them into your final compilation.
-                                </p>
+                    <div className="glass-card p-8 mb-6">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-slate-100">🧠 LLM Engine Selection</h3>
+                        {availableModels.length > 0 ? (
+                            <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)} className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-medium dark:text-white px-4 py-3 rounded-xl outline-none max-w-sm w-full shadow-inner cursor-pointer">
+                                {availableModels.map(m => (
+                                    <option key={m.name} value={m.name}>{m.displayName} {m.name.includes('1.5-pro') ? '(Highly Recommended)' : ''}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <p className="text-sm text-slate-500 dark:text-slate-400 italic">Please validate your API API key above to view capable models on your account.</p>
+                        )}
+                    </div>
+
+                    <div className="glass-card p-8">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-slate-100">☀️ Visual Appearance</h3>
+                        <div className="flex items-center gap-4">
+                            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Dark Mode</span>
+                            <button 
+                                onClick={() => setIsDarkMode(!isDarkMode)} 
+                                className={`w-14 h-7 rounded-full relative transition-colors ${isDarkMode ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                            >
+                                <div className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full shadow transition-transform ${isDarkMode ? 'translate-x-7' : 'translate-x-0'}`}></div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderCompareModule = () => {
+                if(compareStep === 'analyzing') return renderLoadingState();
+                
+                if(compareStep === 'results' && apiDataCompare) {
+                    return (
+                        <div className="w-full max-w-6xl mx-auto animate-fade-in relative z-10 pt-8 pb-20">
+                            <div className="flex justify-between items-center mb-10 border-b border-slate-200 dark:border-slate-800 pb-4">
+                                <button onClick={() => setCompareStep('input')} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700">← Edit Documents</button>
+                                <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white">Analysis Report</h2>
                             </div>
 
-                            <div className="space-y-6 flex-1 px-8 pb-10">
-                                {apiData.optimizedBullets && apiData.optimizedBullets.length > 0 ? apiData.optimizedBullets.map((b, i) => (
-                                    <div key={i} className={`p-6 rounded-2xl border-2 transition shadow-sm ${acceptedEnhancements[i] ? 'border-emerald-400 bg-emerald-50/10' : 'border-slate-200 bg-white'}`}>
-                                        <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                                            <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400">Statement Identification #{i + 1}</h4>
-                                            
-                                            <button 
-                                                onClick={() => setAcceptedEnhancements(prev => ({...prev, [i]: !prev[i]}))}
-                                                className={`text-xs font-bold px-5 py-2 rounded-lg transition shadow-sm border-2 ${acceptedEnhancements[i] ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200 ring-2 ring-emerald-500/20' : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'}`}
-                                            >
-                                                {acceptedEnhancements[i] ? '✓ ACTIVE: INJECT STATEMENT' : '✗ REJECTED: KEEP ORIGINAL'}
-                                            </button>
-                                        </div>
-                                        
-                                        <div className="grid md:grid-cols-2 gap-8">
-                                            <div className="relative">
-                                                <span className="absolute top-[-10px] left-4 px-2 bg-white text-rose-500 rounded text-[10px] uppercase font-extrabold tracking-widest">Original Parse</span>
-                                                <div className="text-sm font-mono text-slate-500 bg-slate-50 border border-slate-200 px-4 py-6 rounded-xl line-through decoration-rose-300 decoration-2">
-                                                    {b.original}
-                                                </div>
-                                            </div>
-                                            <div className="relative">
-                                                <span className="absolute top-[-10px] left-4 px-2 bg-white text-emerald-600 rounded text-[10px] uppercase font-extrabold tracking-widest flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Enhanced Alignment</span>
-                                                <div className={`text-sm font-mono bg-white border px-4 py-6 rounded-xl shadow-inner font-medium leading-relaxed transition ${acceptedEnhancements[i] ? 'text-emerald-900 border-emerald-300 shadow-[inset_0_0_15px_rgba(16,185,129,0.1)]' : 'text-slate-800 border-slate-200'}`}>
-                                                    {b.optimized}
-                                                </div>
-                                            </div>
-                                        </div>
+                            <div className="glass-card p-8 md:p-12 mb-10 border-t-8 border-t-indigo-500">
+                                <div className="flex flex-col md:flex-row items-center gap-10">
+                                    <div className="w-48 relative shrink-0">
+                                        <svg viewBox="0 0 36 36" className="circular-chart text-indigo-600">
+                                            <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                            <path className="circle" strokeDasharray={`${apiDataCompare.score || 0}, 100`} stroke="currentColor" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                            <text x="18" y="20.35" className="percentage">{apiDataCompare.score || 0}%</text>
+                                        </svg>
+                                        <p className="text-center text-sm font-bold text-slate-500 dark:text-slate-400 mt-2 uppercase">Match Score</p>
                                     </div>
-                                )) : (
-                                    <p className="text-sm text-slate-500 italic p-10 text-center border-2 border-dashed border-slate-300 rounded-2xl bg-white/50">No optimization targets algorithmically detected. Ensure context implies actionable history.</p>
+                                    <div className="flex-1 text-center md:text-left">
+                                        <h3 className="text-2xl font-bold mb-4 dark:text-white">Recruiter's Summary</h3>
+                                        <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-lg bg-indigo-50 dark:bg-indigo-900/30 p-6 rounded-xl border border-indigo-100 dark:border-indigo-800/50">{apiDataCompare.summary}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-8 mb-10">
+                                <div className="glass-card p-8 rounded-2xl border-t-8 border-t-emerald-400">
+                                    <h3 className="text-xl font-extrabold mb-6 flex items-center gap-3 text-emerald-800 dark:text-emerald-400">✅ What You Did Well</h3>
+                                    <ul className="space-y-6">
+                                        {apiDataCompare.matches && apiDataCompare.matches.map((item, i) => (
+                                            <li key={i} className="flex gap-4 items-start">
+                                                <span className="text-emerald-500 font-extrabold mt-0.5 text-xl">✓</span> 
+                                                <div>
+                                                    <strong className="block text-slate-800 dark:text-slate-100 text-[16px] mb-1">{item.skill}</strong>
+                                                    <span className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed"><strong className="text-emerald-700 dark:text-emerald-500 font-semibold italic">Meets Job Needs:</strong> {item.jdLink}</span>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <div className="glass-card p-8 rounded-2xl border-t-8 border-t-rose-500">
+                                    <h3 className="text-xl font-extrabold mb-6 flex items-center gap-3 text-rose-800 dark:text-rose-400">⚠️ What You Need to Add</h3>
+                                    <ul className="space-y-6">
+                                        {apiDataCompare.missing && apiDataCompare.missing.map((item, i) => (
+                                            <li key={i} className="flex gap-4 items-start">
+                                                <span className="text-rose-500 font-extrabold mt-0.5 text-xl">!</span> 
+                                                <div>
+                                                    <strong className="block text-slate-800 dark:text-slate-100 text-[16px] mb-1">{item.skill}</strong>
+                                                    <span className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed"><strong className="text-rose-700 dark:text-rose-500 font-semibold italic">Why it matters:</strong> {item.jdLink}</span>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-8 shadow-xl">
+                                <div className="flex flex-col md:flex-row justify-between md:items-center gap-5 mb-8">
+                                    <div>
+                                        <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Recommendations to Improve</h3>
+                                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Check the boxes below. We will seamlessly write these changes into your resume to immediately boost your match score.</p>
+                                    </div>
+                                    <button onClick={generatePointerInjectedResume} className="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-500 text-white font-bold px-6 py-4 rounded-xl shadow-md transition text-sm whitespace-nowrap shrink-0">
+                                        {isRegenerating ? "Weaving It In..." : "Add These to My Resume ↓"}
+                                    </button>
+                                </div>
+                                
+                                <div className="space-y-4">
+                                    {apiDataCompare.pointers && apiDataCompare.pointers.map((pointer, i) => (
+                                        <div key={i} className={`p-5 rounded-xl border flex items-center gap-5 transition ${acceptedPointers[i] ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-500/50 shadow-inner' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800'}`} onClick={() => setAcceptedPointers(prev => ({...prev, [i]: !prev[i]}))}>
+                                            <button className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center font-bold transition border-2 ${acceptedPointers[i] ? 'bg-indigo-600 border-indigo-600 text-white dark:bg-indigo-500 dark:border-indigo-500' : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-transparent'}`}>✓</button>
+                                            <p className={`text-[15px] ${acceptedPointers[i] ? 'text-indigo-900 dark:text-indigo-200 font-semibold' : 'text-slate-700 dark:text-slate-300'}`}>{pointer}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                // Default Compare Input
+                return (
+                    <div className="w-full max-w-6xl mx-auto animate-fade-in pt-8 pb-20">
+                        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">Compare Your Resume</h1>
+                        <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium">Find out exactly what a recruiter thinks when comparing your resume to the job description.</p>
+
+                        <div className="grid lg:grid-cols-2 gap-8 mb-8">
+                            <div className="glass-card p-6 flex flex-col relative">
+                                <h2 className="text-lg font-bold flex items-center gap-2 text-indigo-700 dark:text-indigo-400 mb-4">📄 Target Job Description</h2>
+                                <textarea 
+                                    value={jdText} onChange={e => setJdText(e.target.value)}
+                                    placeholder="Paste the job requirements here..." 
+                                    className="flex-1 w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[400px] text-sm dark:text-white shadow-inner"
+                                ></textarea>
+                            </div>
+
+                            <div className="glass-card p-6 flex flex-col relative">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-lg font-bold flex items-center gap-2 text-blue-700 dark:text-blue-400">👤 Your Resume</h2>
+                                    <button onClick={() => fileInputRefCompare.current.click()} disabled={fileParsing} className="text-xs shrink-0 font-bold px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 text-white shadow-sm hover:bg-slate-800 disabled:opacity-50">
+                                        📁 Upload File (PDF/DOCX)
+                                    </button>
+                                    <input type="file" ref={fileInputRefCompare} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={(e) => handleFileUpload(e, setResumeText)} />
+                                </div>
+                                <textarea 
+                                    value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={fileParsing}
+                                    placeholder="Or simply paste your resume text here..." 
+                                    className="flex-1 w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[400px] text-sm dark:text-white shadow-inner"
+                                ></textarea>
+                                {fileParsing && (
+                                    <div className="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm flex items-center justify-center rounded-2xl">
+                                        <p className="font-bold text-slate-800 dark:text-white">Reading file...</p>
+                                    </div>
                                 )}
                             </div>
+                        </div>
+                        <div className="flex justify-center">
+                            <button onClick={executeCompareAlgorithm} className="shimmer-btn bg-indigo-600 text-white px-12 py-5 rounded-xl font-bold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20">
+                                Start Resume Comparison →
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderOptimizeModule = () => {
+                if(optimizeStep === 'analyzing') return renderLoadingState();
+                
+                if(optimizeStep === 'results' && apiDataOptimize) {
+                    return (
+                        <div className="w-full max-w-6xl mx-auto animate-fade-in relative z-10 pt-8 pb-20">
+                            <div className="flex justify-between items-center mb-10 border-b border-slate-200 dark:border-slate-800 pb-4">
+                                <button onClick={() => setOptimizeStep('input')} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700">← Back</button>
+                                <button onClick={generateLocalReplacedResume} className="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-500 text-white font-bold px-8 py-3 rounded-xl shadow-lg transition tracking-wide text-sm md:text-base">
+                                    Download Final Resume ↓
+                                </button>
+                            </div>
+
+                            <div className="glass-card flex flex-col">
+                                <div className="p-8 pb-4">
+                                    <h3 className="text-2xl font-bold tracking-tight mb-3 text-slate-800 dark:text-white">Enhancement Studio</h3>
+                                    <p className="text-sm text-slate-600 dark:text-slate-400 font-medium px-4 py-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-lg inline-block shadow-sm">
+                                        Review the suggested improvements below. Click "Accept" if you want us to update that line in your document!
+                                    </p>
+                                </div>
+
+                                <div className="space-y-8 flex-1 px-8 pb-10 mt-4">
+                                    {apiDataOptimize.optimizedBullets && apiDataOptimize.optimizedBullets.length > 0 ? apiDataOptimize.optimizedBullets.map((b, i) => (
+                                        <div key={i} className={`p-8 rounded-2xl border-2 transition shadow-sm ${acceptedEnhancements[i] ? 'border-emerald-400 bg-emerald-50/30 dark:bg-emerald-900/10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'}`}>
+                                            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 border-b border-slate-100 dark:border-slate-700 pb-4">
+                                                <h4 className="text-sm font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Sentence Improvement</h4>
+                                                
+                                                <button 
+                                                    onClick={() => setAcceptedEnhancements(prev => ({...prev, [i]: !prev[i]}))}
+                                                    className={`text-[13px] font-bold px-5 py-2.5 rounded-xl transition border-2 w-full md:w-auto ${acceptedEnhancements[i] ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-600 ring-2 ring-emerald-500/20 shadow-inner' : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800/50 hover:bg-rose-100 shadow-sm'}`}
+                                                >
+                                                    {acceptedEnhancements[i] ? '✓ ACTIVE: INJECT THIS' : '✗ REJECTED: KEEP ORIGINAL'}
+                                                </button>
+                                            </div>
+                                            
+                                            <div className="grid md:grid-cols-2 gap-8 mt-2">
+                                                <div>
+                                                    <span className="inline-block mb-3 px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded font-bold text-[11px] uppercase tracking-wider">Before</span>
+                                                    <div className="text-[15px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 px-5 py-6 rounded-xl line-through decoration-rose-300 dark:decoration-rose-500/50 decoration-2 leading-relaxed h-[calc(100%-30px)]">
+                                                        {b.original}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <span className="inline-block mb-3 px-3 py-1 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded font-bold text-[11px] uppercase tracking-wider">After (Professional Format)</span>
+                                                    <div className={`text-[15px] px-5 py-6 rounded-xl font-medium leading-relaxed border transition h-[calc(100%-30px)] ${acceptedEnhancements[i] ? 'text-emerald-900 dark:text-emerald-100 border-emerald-300 dark:border-emerald-500/50 bg-white dark:bg-slate-800 shadow-[inset_0_0_15px_rgba(16,185,129,0.05)]' : 'text-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'}`}>
+                                                        {b.optimized}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )) : (
+                                        <div className="p-10 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl text-center">
+                                            <span className="text-4xl block mb-4">🏆</span>
+                                            <p className="text-slate-600 dark:text-slate-400 font-bold">Your resume looks thoroughly professional already! We didn't find any glaring sentences to reformat.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="w-full max-w-4xl mx-auto animate-fade-in pt-8 pb-20">
+                        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">Resume Formatting Tool</h1>
+                        <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium">Upload your resume to have our AI clean up passive text and apply strong professional action phrases automatically.</p>
+
+                        <div className="glass-card p-8 flex flex-col">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 shadow-sm border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 rounded-xl">
+                                <div>
+                                    <h2 className="font-bold text-slate-800 dark:text-slate-100">Your Document</h2>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Upload a PDF, Word DOCX, or Text file.</p>
+                                </div>
+                                <button onClick={() => fileInputRefOptimize.current.click()} disabled={fileParsing} className="text-sm mt-4 sm:mt-0 font-bold px-6 py-3 rounded-lg bg-slate-900 dark:bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50">
+                                    📁 Select File
+                                </button>
+                                <input type="file" ref={fileInputRefOptimize} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={(e) => handleFileUpload(e, setResumeText)} />
+                            </div>
+                            <textarea 
+                                value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={fileParsing}
+                                placeholder="Extracted text will appear here. Or just paste your resume directly..." 
+                                className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-6 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-[400px] text-sm text-slate-800 dark:text-slate-200 shadow-inner"
+                            ></textarea>
+                            {fileParsing && (
+                                <div className="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm flex items-center justify-center rounded-2xl">
+                                    <p className="font-bold text-slate-800 dark:text-white">Reading file...</p>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="flex justify-center mt-10">
+                            <button onClick={executeOptimizeAlgorithm} className="shimmer-btn bg-indigo-600 text-white px-12 py-5 rounded-xl font-bold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition">
+                                Scan & Improve Format →
+                            </button>
                         </div>
                     </div>
                 );
             };
 
             return (
-                <div className="min-h-screen p-4 md:p-8 text-slate-800 pb-20 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-indigo-50 rounded-full blur-3xl opacity-50 -z-10 translate-x-[40%] -translate-y-[40%] pointer-events-none"></div>
-                    
-                    {step === 'home' && renderHome()}
-                    {step === 'compare_setup' && renderCompareSetup()}
-                    {step === 'optimize_setup' && renderOptimizeSetup()}
-                    
-                    {step === 'analyzing' && renderAnalyzing()}
-                    
-                    {step === 'results_compare' && renderCompareResults()}
-                    {step === 'results_optimize' && renderOptimizeResults()}
+                <div className="flex w-full min-h-screen">
+                    {renderSidebar()}
+                    <div className="flex-1 md:ml-64 p-6 md:p-10 relative overflow-x-hidden min-h-screen">
+                        
+                        {/* Background Deco */}
+                        <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-indigo-100 dark:bg-indigo-900/10 rounded-full blur-[100px] -z-10 translate-x-[20%] -translate-y-[20%] pointer-events-none"></div>
+
+                        {currentView === 'compare' && renderCompareModule()}
+                        {currentView === 'optimize' && renderOptimizeModule()}
+                        {currentView === 'settings' && renderSettings()}
+                    </div>
                 </div>
             );
         }
