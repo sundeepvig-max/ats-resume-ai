@@ -280,6 +280,30 @@
             };
 
             // =========================
+            // CENTRAL AI ENGINE
+            // =========================
+
+            const callGeminiAPI = async (prompt, forceJson = false, roleHistory = null) => {
+                const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
+                let apiPayload = roleHistory ? roleHistory : [{ role: "user", parts: [{ text: prompt }] }];
+
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: apiPayload, generationConfig: forceJson ? { responseMimeType: "application/json" } : undefined })
+                });
+                
+                const data = await response.json();
+                if(data.error) throw new Error(data.error.message);
+                
+                let text = data.candidates[0].content.parts[0].text;
+                if(forceJson) {
+                    text = text.replace(/```json/g, '').replace(/```/g, '');
+                    return JSON.parse(text);
+                }
+                return text;
+            };
+
+            // =========================
             // COMPARE RESUME ENGINE
             // =========================
 
@@ -315,20 +339,7 @@
                 `;
 
                 try {
-                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-                    });
-
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error.message);
-
-                    let rawResponse = data.candidates[0].content.parts[0].text;
-                    rawResponse = rawResponse.replace(/```json/g, '').replace(/```/g, ''); 
-                    
-                    const parsed = JSON.parse(rawResponse);
+                    const parsed = await callGeminiAPI(prompt, true);
                     
                     const pState = {};
                     if(parsed.pointers) parsed.pointers.forEach((_, i) => pState[i] = false);
@@ -377,14 +388,7 @@
                 `;
 
                 try {
-                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-                    });
-                    const data = await response.json();
-                    let newText = data.candidates[0].content.parts[0].text;
+                    const newText = await callGeminiAPI(prompt);
                     
                     exportAsWordDoc(newText, "Improved_Resume");
 
@@ -424,19 +428,7 @@
                 `;
 
                 try {
-                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-                    });
-
-                    const data = await response.json();
-                    if(data.error) throw new Error(data.error.message);
-
-                    let rawResponse = data.candidates[0].content.parts[0].text;
-                    rawResponse = rawResponse.replace(/```json/g, '').replace(/```/g, ''); 
-                    const parsed = JSON.parse(rawResponse);
+                    const parsed = await callGeminiAPI(prompt, true);
                     
                     const defaultReject = {};
                     if (parsed.optimizedBullets) {
@@ -492,16 +484,11 @@
                 const prompt = `You are an elite Executive Career Coach. Write a highly tailored, persuasive, and professional Cover Letter for this exact Job Description using only facts from this candidate's Resume. Format it ready to be sent (including placeholders for [Date], [Company Name], etc if not explicit). \n\n${lengthConstraint}\n\nJob Description:\n${jdText}\n\nCandidate Resume:\n${resumeText}\n\nINSTRUCTION: Output only the plain text body of the cover letter with professional spacing.`;
 
                 try {
-                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-                    });
-                    const data = await response.json();
+                    const letterText = await callGeminiAPI(prompt);
                     
                     setLoadingProgress(100);
                     setTimeout(() => {
-                        setClData(data.candidates[0].content.parts[0].text);
+                        setClData(letterText);
                         setCoverLetterStep('results');
                     }, 500);
                 } catch(e) {
@@ -539,15 +526,10 @@
                 setChatHistory([{role: 'user', internal: true, parts: [{text: sysPrompt}]}]);
                 
                 try {
-                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{role: 'user', parts: [{text: sysPrompt}]}] })
-                    });
-                    const data = await response.json();
+                    const modelResponse = await callGeminiAPI(sysPrompt);
                     setChatHistory([
                         {role: 'user', internal: true, parts: [{text: sysPrompt}]},
-                        {role: 'model', parts: [{text: data.candidates[0].content.parts[0].text}]}
+                        {role: 'model', parts: [{text: modelResponse}]}
                     ]);
                 } catch(e) {
                     alert("Interviewer disconnected: " + e.message);
@@ -566,16 +548,10 @@
                 setIsChatLoading(true);
                 
                 try {
-                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
                     const apiHistory = currentHistory.map(msg => ({ role: msg.role === 'model' ? 'model' : 'user', parts: msg.parts }));
+                    const modelReply = await callGeminiAPI(null, false, apiHistory);
                     
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: apiHistory })
-                    });
-                    const data = await response.json();
-                    
-                    setChatHistory([...currentHistory, {role: 'model', parts: [{text: data.candidates[0].content.parts[0].text}]}]);
+                    setChatHistory([...currentHistory, {role: 'model', parts: [{text: modelReply}]}]);
                 } catch(e) {
                     alert("Chat failed: " + e.message);
                 } finally {
@@ -586,6 +562,24 @@
             // =========================
             // SHARED COMPONENTS
             // =========================
+
+            const SharedDocumentPanel = ({ fileRefOverride }) => (
+                <div className="grid lg:grid-cols-2 gap-8 mb-8">
+                    <div className="glass-card p-6 flex flex-col relative w-full overflow-hidden">
+                        <h2 className="text-lg font-bold flex items-center gap-2 text-indigo-700 dark:text-indigo-400 mb-4">📄 Target Job Description</h2>
+                        <textarea value={jdText} onChange={e => setJdText(e.target.value)} placeholder="Paste the job requirements here..." className="flex-1 w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[400px] md:min-h-[300px] text-sm dark:text-white shadow-inner"></textarea>
+                    </div>
+                    <div className="glass-card p-6 flex flex-col relative w-full overflow-hidden">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+                            <h2 className="text-lg font-bold flex items-center gap-2 text-blue-700 dark:text-blue-400 whitespace-nowrap">👤 Your Resume</h2>
+                            <button onClick={() => (fileRefOverride || fileInputRefCompare).current.click()} disabled={fileParsing} className="text-xs shrink-0 font-bold px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 text-white shadow-sm hover:bg-slate-800 disabled:opacity-50 transition">📁 Upload File</button>
+                            <input type="file" ref={fileRefOverride || fileInputRefCompare} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={(e) => handleFileUpload(e, setResumeText)} />
+                        </div>
+                        <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={fileParsing} placeholder="Or simply paste your resume text here..." className="flex-1 w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[400px] md:min-h-[300px] text-sm dark:text-white shadow-inner"></textarea>
+                        {fileParsing && (<div className="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm flex items-center justify-center rounded-2xl"><p className="font-bold text-slate-800 dark:text-white">Reading file...</p></div>)}
+                    </div>
+                </div>
+            );
 
             const renderLoadingState = () => (
                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-32 text-center relative">
@@ -898,36 +892,7 @@
                         <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">Compare Your Resume</h1>
                         <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium">Find out exactly what a recruiter thinks when comparing your resume to the job description.</p>
 
-                        <div className="grid lg:grid-cols-2 gap-8 mb-8">
-                            <div className="glass-card p-6 flex flex-col relative w-full overflow-hidden">
-                                <h2 className="text-lg font-bold flex items-center gap-2 text-indigo-700 dark:text-indigo-400 mb-4">📄 Target Job Description</h2>
-                                <textarea 
-                                    value={jdText} onChange={e => setJdText(e.target.value)}
-                                    placeholder="Paste the job requirements here..." 
-                                    className="flex-1 w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[400px] text-sm dark:text-white shadow-inner"
-                                ></textarea>
-                            </div>
-
-                            <div className="glass-card p-6 flex flex-col relative w-full overflow-hidden">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-                                    <h2 className="text-lg font-bold flex items-center gap-2 text-blue-700 dark:text-blue-400 whitespace-nowrap">👤 Your Resume</h2>
-                                    <button onClick={() => fileInputRefCompare.current.click()} disabled={fileParsing} className="text-xs shrink-0 font-bold px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 text-white shadow-sm hover:bg-slate-800 disabled:opacity-50">
-                                        📁 Upload File (PDF/DOCX)
-                                    </button>
-                                    <input type="file" ref={fileInputRefCompare} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={(e) => handleFileUpload(e, setResumeText)} />
-                                </div>
-                                <textarea 
-                                    value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={fileParsing}
-                                    placeholder="Or simply paste your resume text here..." 
-                                    className="flex-1 w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[400px] text-sm dark:text-white shadow-inner"
-                                ></textarea>
-                                {fileParsing && (
-                                    <div className="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-                                        <p className="font-bold text-slate-800 dark:text-white">Reading file...</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        <SharedDocumentPanel fileRefOverride={fileInputRefCompare} />
                         <div className="flex justify-center">
                             <button onClick={executeCompareAlgorithm} className="shimmer-btn bg-indigo-600 text-white px-12 py-5 rounded-xl font-bold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20">
                                 Start Resume Comparison →
@@ -1087,36 +1052,7 @@
                                             </select>
                                         </div>
 
-                                        <div className="grid lg:grid-cols-2 gap-8 mb-8">
-                                            <div className="glass-card p-6 flex flex-col relative w-full overflow-hidden">
-                                                <h2 className="text-lg font-bold flex items-center gap-2 text-indigo-700 dark:text-indigo-400 mb-4">📄 Target Job Description</h2>
-                                                <textarea 
-                                                    value={jdText} onChange={e => setJdText(e.target.value)}
-                                                    placeholder="Paste the job requirements here..." 
-                                                    className="flex-1 w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[300px] text-sm dark:text-white shadow-inner"
-                                                ></textarea>
-                                            </div>
-
-                                            <div className="glass-card p-6 flex flex-col relative w-full overflow-hidden">
-                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-                                                    <h2 className="text-lg font-bold flex items-center gap-2 text-blue-700 dark:text-blue-400 whitespace-nowrap">👤 Your Resume</h2>
-                                                    <button onClick={() => fileInputRefCover.current.click()} disabled={fileParsing} className="text-xs shrink-0 font-bold px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 text-white shadow-sm hover:bg-slate-800 disabled:opacity-50 transition">
-                                                        📁 Upload File
-                                                    </button>
-                                                    <input type="file" ref={fileInputRefCover} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={(e) => handleFileUpload(e, setResumeText)} />
-                                                </div>
-                                                <textarea 
-                                                    value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={fileParsing}
-                                                    placeholder="Or simply paste your resume text here..." 
-                                                    className="flex-1 w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[300px] text-sm dark:text-white shadow-inner"
-                                                ></textarea>
-                                                {fileParsing && (
-                                                    <div className="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-                                                        <p className="font-bold text-slate-800 dark:text-white">Reading file...</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
+                                        <SharedDocumentPanel fileRefOverride={fileInputRefCover} />
                                         <div className="flex justify-center">
                                             <button onClick={executeCoverLetterGenerator} className="shimmer-btn bg-indigo-600 text-white px-12 py-5 rounded-xl font-bold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition">Write My Cover Letter ✨</button>
                                         </div>
