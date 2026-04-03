@@ -57,13 +57,24 @@
             const [resumeText, setResumeText] = useState('');
             const [apiData, setApiData] = useState(null);
             
-            // Revisions state
+            // Revisions & UI State
             const [acceptedEnhancements, setAcceptedEnhancements] = useState({});
             const [acceptedPointers, setAcceptedPointers] = useState({});
+            const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
 
             const fileInputRef = useRef(null);
             const [fileParsing, setFileParsing] = useState(false);
             const [isRegenerating, setIsRegenerating] = useState(false);
+
+            const loadingMessages = [
+                "Scanning document structure...",
+                "Extracting technical artifacts & metrics...",
+                "Cross-referencing heavily against Job Description...",
+                "Applying tough recruiter scrutiny standards...",
+                "Identifying critical skill gaps natively...",
+                "Deriving algorithmic match percentage...",
+                "Finalizing strict QA context..."
+            ];
 
             useEffect(() => {
                 if (window.pdfjsLib) {
@@ -71,6 +82,18 @@
                 }
                 if (apiKey) validateApiKey(apiKey);
             }, []);
+
+            // Dynamic loading message system
+            useEffect(() => {
+                let interval;
+                if (step === 'analyzing') {
+                    setLoadingMessageIndex(0);
+                    interval = setInterval(() => {
+                        setLoadingMessageIndex(prev => (prev < loadingMessages.length - 1 ? prev + 1 : prev));
+                    }, 1800);
+                }
+                return () => clearInterval(interval);
+            }, [step]);
 
             const validateApiKey = async (keyToTest) => {
                 const targetKey = keyToTest || apiKey;
@@ -129,7 +152,7 @@
                             setResumeText(text);
                             setFileParsing(false);
                         } catch (err) {
-                            alert("Error parsing PDF: " + err);
+                            alert("Error parsing PDF locally: " + err);
                             setFileParsing(false);
                         }
                     };
@@ -167,18 +190,26 @@
                 setAcceptedPointers({});
                 
                 const prompt = `
-                    You are a Senior Technical Recruiter. Compare the candidate's resume strictly against the target Job Description.
+                    You are an elite, ruthlessly tough Senior Technical Recruiter at a top-tier employer. You process thousands of resumes and heavily penalize candidates for fluff, missing data, and weak keyword integration. 
+                    Act strictly as a gatekeeper. Scrutinize this Candidate Resume against the Job Description constraints without mercy.
+                    
                     Job Description:
                     ${jdText}
+                    
                     Candidate Resume:
                     ${resumeText}
-                    INSTRUCTION: Output strictly valid JSON answering the following:
+                    
+                    INSTRUCTION: Output strictly valid JSON answering the following schema natively:
                     {
-                        "score": [number 0-100 indicating percentage match],
-                        "summary": "A 2-3 sentence executive summary of how well the candidate aligns.",
-                        "matches": ["key requirement 1 mapped successfully", "key requirement 2 mapped successfully"],
-                        "missing": ["missing critical skill 1", "missing structural history 2"],
-                        "pointers": ["A specific action pointer recommending they inject X into their resume.", "Recommend they highlight Y more prominently."]
+                        "score": [Number 0-100 indicating match percentage. BE EXTREMELY TOUGH. If they miss required skills, penalize this severely.],
+                        "summary": "A 2-3 sentence ruthless executive summary of how well the candidate actually aligns, calling out major flaws explicitly.",
+                        "matches": [
+                            { "skill": "The precise skill/experience located in resume", "jdLink": "Why the JD explicitly requires this" }
+                        ],
+                        "missing": [
+                            { "skill": "The precise missing constraint from the JD", "jdLink": "The severe reality of what missing this skill means for their chances" }
+                        ],
+                        "pointers": ["Actionable recommendation 1 to inject into resume", "Actionable recommendation 2"]
                     }
                 `;
 
@@ -227,7 +258,7 @@
                         "optimizedBullets": [
                             { 
                                 "original": "the exact original underperforming sub-string from the input text", 
-                                "optimized": "The powerful, eye-catchy enhanced line utilizing action verbs." 
+                                "optimized": "The powerful, visually-appealing enhanced line utilizing action verbs." 
                             }
                         ]
                     }
@@ -248,7 +279,6 @@
                     rawResponse = rawResponse.replace(/```json/g, '').replace(/```/g, ''); 
                     const parsed = JSON.parse(rawResponse);
                     
-                    // DEFAULT TO REJECT (false) AS PER REQUIREMENTS
                     const defaultReject = {};
                     if (parsed.optimizedBullets) {
                         parsed.optimizedBullets.forEach((_, idx) => defaultReject[idx] = false);
@@ -273,8 +303,8 @@
 
                 setIsRegenerating(true);
                 const prompt = `
-                    You are a Master Resume Architect. I am going to give you my current resume exactly as it is written.
-                    I am also going to give you a list of strict Pointers that I want you to weave/inject seamlessly into the resume.
+                    You are a Master Resume Architect. I am going to give you my current resume.
+                    I am also giving you a list of strict Pointers that I want you to weave seamlessly into the resume.
                     
                     Candidate Resume:
                     ${resumeText}
@@ -282,7 +312,7 @@
                     Target Pointers To Inject Genuinely:
                     ${JSON.stringify(pointersToInject)}
                     
-                    INSTRUCTION: Output NOTHING but the raw plain text of the newly rewritten resume containing the injected parameters. Do not output markdown, JSON, or conversation. Just the text document formatting.
+                    INSTRUCTION: Output NOTHING but the raw plain text of the newly rewritten resume containing the injected parameters. Do not output markdown, JSON, or conversation. Just the raw text document formatting.
                 `;
 
                 try {
@@ -344,7 +374,7 @@
                         <button onClick={() => validateApiKey()} className="bg-slate-800 text-white text-xs font-bold px-4 py-2.5 hover:bg-slate-700 transition border-y border-r border-slate-800">
                             {keyStatus === 'checking' ? 'Verifying...' : 'Validate'}
                         </button>
-                        <div className="flex items-center justify-center bg-slate-100 border border-slate-300 border-l-0 rounded-r-lg px-3 py-2.5 h-[38px]">
+                        <div className="flex items-center justify-center bg-slate-100 border border-slate-300 border-l-0 rounded-r-lg px-3 py-2.5 h-[38px] w-[38px] shrink-0">
                             <div className={`w-3 h-3 rounded-full ${keyStatus === 'valid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : keyStatus === 'unverified' ? 'bg-red-500' : keyStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'}`}></div>
                         </div>
                     </div>
@@ -425,8 +455,8 @@
                         </div>
                     </div>
                     <div className="flex justify-center mt-6">
-                        <button onClick={executeCompareAlgorithm} className="shimmer-btn bg-indigo-600 border border-indigo-700 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-xl mt-2 mb-10 tracking-widest">
-                            EXECUTE COMPARISON ENGINE →
+                        <button onClick={executeCompareAlgorithm} className="shimmer-btn bg-indigo-600 border border-indigo-700 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-xl mt-2 mb-10 tracking-widest tracking-wide">
+                            Start Resume Comparison →
                         </button>
                     </div>
                 </div>
@@ -444,21 +474,21 @@
                         <div className="flex flex-col md:flex-row items-center justify-between mb-6 shadow-sm border border-slate-100 bg-white p-4 rounded-xl">
                             <div>
                                 <h2 className="text-lg font-bold text-slate-800 tracking-tight">Upload Your Document</h2>
-                                <p className="text-xs text-slate-500">Supports PDF, DOCX, and TXT binary buffering natively.</p>
+                                <p className="text-xs text-slate-500">Supports PDF, DOCX, and TXT parsing natively.</p>
                             </div>
                             <button onClick={triggerFileUpload} className="text-sm mt-4 md:mt-0 font-bold px-6 py-3 rounded-lg bg-slate-900 text-white hover:bg-slate-800 tracking-widest uppercase">📁 Select Resume File</button>
                             <input type="file" ref={fileInputRef} className="hidden" accept=".txt,.pdf,application/pdf,.doc,.docx" onChange={handleFileUpload} />
                         </div>
                         <textarea 
                             value={resumeText} onChange={e => setResumeText(e.target.value)}
-                            placeholder="File text buffer output will actively populate here..." 
+                            placeholder="File text payload will strictly populate here..." 
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl p-6 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-[400px] text-sm font-mono shadow-inner"
                         ></textarea>
                     </div>
                     
                     <div className="flex justify-center mt-6">
-                        <button onClick={executeOptimizeAlgorithm} className="shimmer-btn bg-indigo-600 border border-indigo-700 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-xl mt-2 mb-10 tracking-widest">
-                            EXECUTE OPTIMIZATION ENGINE →
+                        <button onClick={executeOptimizeAlgorithm} className="shimmer-btn bg-indigo-600 border border-indigo-700 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-xl mt-2 mb-10 tracking-wide">
+                            Start Optimization Pipeline →
                         </button>
                     </div>
                 </div>
@@ -466,10 +496,19 @@
 
             const renderAnalyzing = () => (
                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-20 text-center z-10 relative">
-                    <div className="w-20 h-20 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin mb-8 shadow-lg"></div>
-                    <h2 className="text-3xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-slate-800 tracking-tight">
-                        {isRegenerating ? "Weaving Final Architecture..." : "LLM Execution Pipeline..."}
-                    </h2>
+                    <div className="w-20 h-20 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin mb-10 shadow-lg"></div>
+                    
+                    <div className="h-16 flex items-center justify-center">
+                        {isRegenerating ? (
+                            <h2 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-800 tracking-tight animate-pulse">
+                                Merging Updates into Resume...
+                            </h2>
+                        ) : (
+                            <h2 className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-slate-800 tracking-tight transition-all duration-300 keyframe-fade">
+                                {loadingMessages[loadingMessageIndex] || "Executing..."}
+                            </h2>
+                        )}
+                    </div>
                 </div>
             );
 
@@ -484,7 +523,7 @@
                         {renderHeader()}
                         <div className="flex justify-between items-center mb-8 border-b border-slate-200 pb-4">
                             <button onClick={() => setStep('compare_setup')} className="bg-white border border-slate-200 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Resume Editor</button>
-                            <h2 className="text-2xl font-bold text-slate-800">Alignment Report</h2>
+                            <h2 className="text-2xl font-bold text-slate-800">Recruiter Alignment Report</h2>
                         </div>
 
                         <div className="glass-card p-6 md:p-10 mb-8 border-t-4 border-t-indigo-500">
@@ -495,50 +534,61 @@
                                         <path className="circle" strokeDasharray={`${apiData.score || 0}, 100`} stroke="currentColor" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                                         <text x="18" y="20.35" className="percentage">{apiData.score || 0}%</text>
                                     </svg>
-                                    <p className="text-center text-xs font-bold text-slate-500 mt-4 tracking-widest uppercase">Match Index</p>
+                                    <p className="text-center text-[10px] font-bold text-slate-500 mt-4 tracking-widest uppercase">Strict Match Index</p>
                                 </div>
                                 <div className="flex-1 text-center md:text-left">
-                                    <h3 className="text-2xl font-bold mb-3">Executive Summary</h3>
-                                    <p className="text-slate-600 leading-relaxed text-lg bg-indigo-50/50 p-5 rounded-xl border border-indigo-100">{apiData.summary}</p>
+                                    <h3 className="text-2xl font-bold mb-3">Executive Scrutiny Summary</h3>
+                                    <p className="text-slate-700 leading-relaxed text-lg bg-indigo-50/50 p-5 rounded-xl border border-indigo-100">{apiData.summary}</p>
                                 </div>
                             </div>
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-8 mb-8">
-                            <div className="glass-card p-6 rounded-xl border-t-4 border-t-green-400">
-                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-green-700">✅ Key Alignments</h3>
-                                <ul className="space-y-3">
+                            <div className="glass-card p-6 rounded-xl border-t-4 border-t-emerald-400">
+                                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-emerald-800">✅ Key Validated Alignments</h3>
+                                <ul className="space-y-5">
                                     {apiData.matches && apiData.matches.map((item, i) => (
-                                        <li key={i} className="flex gap-3 text-sm text-slate-700"><span className="text-green-500">✓</span> {item}</li>
+                                        <li key={i} className="flex gap-4 text-sm text-slate-700 items-start">
+                                            <span className="text-emerald-500 font-extrabold mt-0.5 text-lg">✓</span> 
+                                            <div>
+                                                <strong className="block text-slate-800 text-[15px]">{item.skill}</strong>
+                                                <span className="text-xs text-slate-500 italic block mt-1 leading-relaxed"><strong className="text-emerald-700/60 not-italic">Satisfies JD:</strong> {item.jdLink}</span>
+                                            </div>
+                                        </li>
                                     ))}
                                 </ul>
                             </div>
-                            <div className="glass-card p-6 rounded-xl border-t-4 border-t-red-400">
-                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-red-700">❌ Missing Variables</h3>
-                                <ul className="space-y-3">
+                            <div className="glass-card p-6 rounded-xl border-t-4 border-t-rose-500 shadow-[0_4px_25px_rgba(225,29,72,0.05)]">
+                                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-rose-800">⚠️ Critical Missing Requirements</h3>
+                                <ul className="space-y-5">
                                     {apiData.missing && apiData.missing.map((item, i) => (
-                                        <li key={i} className="flex gap-3 text-sm text-slate-700"><span className="text-red-500 font-bold">!</span> {item}</li>
+                                        <li key={i} className="flex gap-4 text-sm text-slate-700 items-start">
+                                            <span className="text-rose-500 font-extrabold mt-0.5 text-lg">!</span> 
+                                            <div>
+                                                <strong className="block text-slate-800 text-[15px]">{item.skill}</strong>
+                                                <span className="text-xs text-rose-600/80 italic block mt-1 leading-relaxed"><strong className="text-rose-800/60 not-italic">Rejection Threat:</strong> {item.jdLink}</span>
+                                            </div>
+                                        </li>
                                     ))}
                                 </ul>
                             </div>
                         </div>
 
                         <div className="bg-white border-2 border-indigo-200 rounded-2xl p-8 shadow-xl">
-                            <div className="flex justify-between items-center mb-6">
+                            <div className="flex flex-col md:flex-row justify-between md:items-center gap-5 mb-6">
                                 <div>
-                                    <h3 className="text-2xl font-bold tracking-tight text-slate-900">Recommended Generative Modifications</h3>
-                                    <p className="text-sm text-slate-500 mt-1">Accept the tactical pointers below. Our LLM will natively weave your accepted recommendations securely into your resume.</p>
+                                    <h3 className="text-2xl font-bold tracking-tight text-slate-900">Recommended Generative Pointers</h3>
+                                    <p className="text-sm text-slate-500 mt-1">Accept the tactical pointers below. Our LLM will natively weave your accepted recommendations correctly into your resume layout to dramatically boost your match percentage.</p>
                                 </div>
-                                <button onClick={generatePointerInjectedResume} className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-3 rounded-xl shadow-md transition text-sm">
+                                <button onClick={generatePointerInjectedResume} className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-4 rounded-xl shadow-md transition text-sm whitespace-nowrap shrink-0 border border-slate-700">
                                     Inject Pointers & Generate Resume ↓
                                 </button>
                             </div>
                             
                             <div className="space-y-4">
                                 {apiData.pointers && apiData.pointers.map((pointer, i) => (
-                                    <div key={i} className={`p-4 rounded-xl border-2 flex items-center gap-4 transition ${acceptedPointers[i] ? 'border-indigo-400 bg-indigo-50/50' : 'border-slate-200 bg-slate-50'}`}>
+                                    <div key={i} className={`p-4 rounded-xl border-2 flex items-center gap-4 transition ${acceptedPointers[i] ? 'border-indigo-400 bg-indigo-50/50 shadow-inner' : 'border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100'}`} onClick={() => setAcceptedPointers(prev => ({...prev, [i]: !prev[i]}))}>
                                         <button 
-                                            onClick={() => setAcceptedPointers(prev => ({...prev, [i]: !prev[i]}))}
                                             className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center font-bold transition border-2 ${acceptedPointers[i] ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 text-transparent'}`}
                                         >✓</button>
                                         <p className={`text-sm ${acceptedPointers[i] ? 'text-indigo-900 font-medium' : 'text-slate-600'}`}>{pointer}</p>
@@ -593,7 +643,7 @@
                                             </div>
                                             <div className="relative">
                                                 <span className="absolute top-[-10px] left-4 px-2 bg-white text-emerald-600 rounded text-[10px] uppercase font-extrabold tracking-widest flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Enhanced Alignment</span>
-                                                <div className={`text-sm font-menu bg-white border px-4 py-6 rounded-xl shadow-inner font-medium leading-relaxed transition ${acceptedEnhancements[i] ? 'text-emerald-900 border-emerald-300 shadow-[inset_0_0_15px_rgba(16,185,129,0.1)]' : 'text-slate-800 border-slate-200'}`}>
+                                                <div className={`text-sm font-mono bg-white border px-4 py-6 rounded-xl shadow-inner font-medium leading-relaxed transition ${acceptedEnhancements[i] ? 'text-emerald-900 border-emerald-300 shadow-[inset_0_0_15px_rgba(16,185,129,0.1)]' : 'text-slate-800 border-slate-200'}`}>
                                                     {b.optimized}
                                                 </div>
                                             </div>
