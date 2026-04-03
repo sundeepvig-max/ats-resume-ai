@@ -40,6 +40,16 @@
         }
         @keyframes btn-shimmer { 100% { left: 200%; } }
 
+        .bars-container { display: flex; align-items: center; justify-content: center; gap: 6px; height: 60px; margin-bottom: 20px;}
+        .anim-bar { width: 8px; background-color: #4f46e5; border-radius: 4px; animation: bounce 1.2s infinite ease-in-out; }
+        .dark .anim-bar { background-color: #818cf8; }
+        .anim-bar:nth-child(1) { animation-delay: -1.0s; }
+        .anim-bar:nth-child(2) { animation-delay: -0.9s; }
+        .anim-bar:nth-child(3) { animation-delay: -0.8s; }
+        .anim-bar:nth-child(4) { animation-delay: -0.7s; }
+        .anim-bar:nth-child(5) { animation-delay: -0.6s; }
+        @keyframes bounce { 0%, 40%, 100% { height: 20%; } 20% { height: 100%; box-shadow: 0 0 10px rgba(79,70,229,0.5); } }
+
         /* Circular Progress */
         .circular-chart { display: block; margin: 0 auto; max-width: 100%; max-height: 250px; }
         .circle-bg { fill: none; stroke: #e2e8f0; stroke-width: 3.8; }
@@ -62,7 +72,7 @@
 
         function App() {
             // Navigation Routing
-            const [currentView, setCurrentView] = useState('compare'); // compare, optimize, settings
+            const [currentView, setCurrentView] = useState('home'); // home, compare, optimize, settings
             const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
             // UI Flow step per module
@@ -80,7 +90,11 @@
 
             // Form Data
             const [jdText, setJdText] = useState('');
-            const [resumeText, setResumeText] = useState('');
+            const [resumeText, setResumeText] = useState(localStorage.getItem('default_resume') || '');
+            const [savedResumeSetting, setSavedResumeSetting] = useState(localStorage.getItem('default_resume') || '');
+            
+            // Scroll State
+            const [showScrollTop, setShowScrollTop] = useState(false);
             
             // Results Data
             const [apiDataCompare, setApiDataCompare] = useState(null);
@@ -114,6 +128,10 @@
                     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
                 }
                 if (apiKey) validateApiKey(apiKey);
+                
+                const handleScroll = () => setShowScrollTop(window.scrollY > 300);
+                window.addEventListener('scroll', handleScroll);
+                return () => window.removeEventListener('scroll', handleScroll);
             }, []);
 
             // Theme Setting Watcher (Light / Dark / Auto)
@@ -452,22 +470,21 @@
 
             const renderLoadingState = () => (
                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-32 text-center relative">
-                    <div className="w-24 h-24 mb-6 relative">
-                        <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-700"></div>
-                        <div className="absolute inset-0 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin"></div>
-                        <div className="absolute inset-0 flex items-center justify-center font-bold text-sm text-slate-500 dark:text-slate-400">
-                            {loadingProgress}%
-                        </div>
+                    <div className="bars-container">
+                        <div className="anim-bar"></div>
+                        <div className="anim-bar"></div>
+                        <div className="anim-bar"></div>
+                        <div className="anim-bar"></div>
+                        <div className="anim-bar"></div>
                     </div>
                     
-                    <div className="h-16 flex items-center justify-center w-full px-4">
-                        <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight transition-all duration-300 min-h-[64px] flex items-center">
+                    <div className="h-16 flex items-center justify-center w-full px-4 mb-2">
+                        <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight transition-all duration-300 min-h-[64px] flex items-center justify-center">
                             {loadingMessages[loadingMessageIndex] || "Working on it..."}
                         </h2>
                     </div>
-                    
-                    <div className="w-full max-w-sm mt-4 progress-bar-container shadow-inner">
-                        <div className="progress-bar-fill" style={{ width: `${loadingProgress}%` }}></div>
+                    <div className="text-indigo-600 dark:text-indigo-400 font-bold mb-4 text-lg">
+                        {loadingProgress}%
                     </div>
                 </div>
             );
@@ -482,13 +499,13 @@
                     <div className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} transition-all duration-300 ease-in-out bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 hidden md:flex flex-col h-screen fixed left-0 top-0 shadow-sm z-50`}>
                         <div className={`p-6 border-b border-slate-100 dark:border-slate-800 relative flex items-center h-[85px] ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
                             {!isSidebarCollapsed && (
-                                <h1 className="text-lg font-extrabold text-slate-900 dark:text-white leading-tight overflow-hidden whitespace-nowrap">
+                                <h1 onClick={() => setCurrentView('home')} className="text-lg font-extrabold text-slate-900 dark:text-white leading-tight overflow-hidden whitespace-nowrap cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                                     ATS Resume <br />
                                     <span className="text-indigo-600 dark:text-indigo-400">Analyzer</span>
                                 </h1>
                             )}
                             {isSidebarCollapsed && (
-                                <div className="font-extrabold text-indigo-600 dark:text-indigo-400 text-2xl">📝</div>
+                                <div onClick={() => setCurrentView('home')} className="font-extrabold text-indigo-600 dark:text-indigo-400 text-2xl cursor-pointer">📝</div>
                             )}
 
                             {/* Collapse Toggle Bubble */}
@@ -618,6 +635,22 @@
                             </button>
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 px-2">Auto mode connects dynamically to your local chronological hour. Shifts strictly between 6 PM to 6 AM.</p>
+                    </div>
+
+                    <div className="glass-card p-8 mt-6">
+                        <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-slate-100">👤 Default Resume</h3>
+                        <p className="text-slate-500 dark:text-slate-400 mb-4 text-sm">Save a default resume here so you don't have to upload it every time you scan against a new JD. Uploading a file in the main tools will temporarily override this.</p>
+                        <textarea 
+                            value={savedResumeSetting} onChange={e => setSavedResumeSetting(e.target.value)}
+                            placeholder="Paste your default resume text here..." 
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-5 mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[200px] text-sm dark:text-white shadow-inner"
+                        ></textarea>
+                        <button 
+                            onClick={() => { localStorage.setItem('default_resume', savedResumeSetting); setResumeText(savedResumeSetting); alert('Default resume saved locally!'); }} 
+                            className="bg-indigo-600 border border-indigo-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-indigo-700 shadow-md transition whitespace-nowrap"
+                        >
+                            Save as Default Resume
+                        </button>
                     </div>
                 </div>
             );
@@ -857,9 +890,29 @@
                         {/* Background Deco */}
                         <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-indigo-100 dark:bg-indigo-900/10 rounded-full blur-[100px] -z-10 translate-x-[20%] -translate-y-[20%] pointer-events-none"></div>
 
+                        {currentView === 'home' && (
+                            <div className="w-full max-w-4xl mx-auto animate-fade-in pt-20 pb-20 text-center">
+                                <h1 className="text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-6">Welcome to <span className="text-indigo-600 dark:text-indigo-400">AuraHome AI</span> Resume Engine</h1>
+                                <p className="text-xl text-slate-600 dark:text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed">Your end-to-end local platform for ruthlessly analyzing and professionally formatting your resume to bypass ATS filters.</p>
+                                <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+                                    <button onClick={() => setCurrentView('compare')} className="shimmer-btn bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition w-full sm:w-auto">Compare vs JD →</button>
+                                    <button onClick={() => setCurrentView('optimize')} className="bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-100 dark:border-slate-700 px-8 py-4 rounded-xl font-bold text-lg hover:border-indigo-300 dark:hover:border-indigo-500 shadow-sm transition w-full sm:w-auto">Optimize Resume ✨</button>
+                                </div>
+                            </div>
+                        )}
                         {currentView === 'compare' && renderCompareModule()}
                         {currentView === 'optimize' && renderOptimizeModule()}
                         {currentView === 'settings' && renderSettings()}
+                        
+                        {showScrollTop && (
+                            <button 
+                                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                                className="fixed bottom-8 right-8 bg-indigo-600 text-white w-14 h-14 rounded-full shadow-[0_10px_25px_rgba(79,70,229,0.5)] flex items-center justify-center text-2xl hover:bg-indigo-700 hover:-translate-y-1 transition-all z-50 animate-fade-in"
+                                title="Scroll to Top"
+                            >
+                                ↑
+                            </button>
+                        )}
                     </div>
                 </div>
             );
