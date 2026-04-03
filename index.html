@@ -4,12 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ATS Soul-Preserving Resume Architect</title>
-    <!-- Zero-Build React Environment for Instant Prototyping -->
+    <!-- Zero-Build Environment -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
+    <!-- PDF.js for Native In-Browser Document Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; }
@@ -44,67 +47,149 @@
             const [step, setStep] = useState('input'); // input, analyzing, results
             const [activeTab, setActiveTab] = useState('score'); // score, diff, cover, review
             
+            // API Settings & Credentials
+            const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
+            const [keyStatus, setKeyStatus] = useState('unverified'); // unverified, checking, valid, invalid
+            const [availableModels, setAvailableModels] = useState([]);
+            const [selectedModel, setSelectedModel] = useState('models/gemini-1.5-flash');
+
+            // Data Payloads
             const [jdText, setJdText] = useState('');
             const [resumeText, setResumeText] = useState('');
-            const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
-            
             const [apiData, setApiData] = useState(null);
+            
             const fileInputRef = useRef(null);
+            const [fileParsing, setFileParsing] = useState(false);
 
-            const MOCK_JD = "Looking for a Senior Frontend Engineer. Requirements: React, TypeScript, GraphQL, Next.js, and CI/CD pipelines. Must be able to mentor juniors and architect scalable state management.";
-            const MOCK_RESUME = "Senior Web Developer at TechCorp.\nBuilt web apps with React and JavaScript.\nFixed bugs and tested code.\nHelped other devs when they got stuck on tickets.";
+            useEffect(() => {
+                // Initialize PDF Worker securely upon startup
+                if (window.pdfjsLib) {
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                }
+                
+                // Auto validate if key exists in memory
+                if (apiKey) validateApiKey(apiKey);
+            }, []);
 
-            const handlePopulateMocks = () => {
-                setJdText(MOCK_JD);
-                setResumeText(MOCK_RESUME);
+            const validateApiKey = async (keyToTest) => {
+                const targetKey = keyToTest || apiKey;
+                if(!targetKey) return;
+                
+                setKeyStatus('checking');
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${targetKey}`);
+                    const data = await res.json();
+                    
+                    if (data.models) {
+                        setKeyStatus('valid');
+                        localStorage.setItem('gemini_api_key', targetKey);
+                        
+                        // Extract natively supported Generation models dynamically
+                        const geminiModels = data.models.filter(m => m.name.includes('gemini') && m.supportedGenerationMethods.includes("generateContent"));
+                        setAvailableModels(geminiModels);
+                        
+                        if(geminiModels.length > 0 && !geminiModels.find(m => m.name === selectedModel)) {
+                            setSelectedModel(geminiModels[0].name); 
+                        }
+                    } else {
+                        setKeyStatus('invalid');
+                    }
+                } catch (e) {
+                    setKeyStatus('invalid');
+                }
             };
 
             const triggerFileUpload = () => {
                 if (fileInputRef.current) fileInputRef.current.click();
             };
 
-            const handleFileUpload = (e) => {
+            // Enhanced File Reader capable of supporting PDFs
+            const handleFileUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (evt) => setResumeText(evt.target.result);
-                reader.readAsText(file); // Supports TXT, Markdown, etc locally
+
+                setFileParsing(true);
+                
+                // If it is an authentic PDF -> Send buffer into PDF.JS
+                if (file.type === 'application/pdf') {
+                    const reader = new FileReader();
+                    reader.onload = async (evt) => {
+                        const typedarray = new Uint8Array(evt.target.result);
+                        try {
+                            const pdf = await window.pdfjsLib.getDocument(typedarray).promise;
+                            let text = '';
+                            
+                            // Iterate pages & stitch
+                            for (let i = 1; i <= pdf.numPages; i++) {
+                                const page = await pdf.getPage(i);
+                                const content = await page.getTextContent();
+                                const strings = content.items.map(item => item.str);
+                                text += strings.join(' ') + '\n';
+                            }
+                            setResumeText(text);
+                            setFileParsing(false);
+                            alert("PDF Extracted Successfully!");
+                        } catch (err) {
+                            alert("Error parsing PDF structure locally: " + err);
+                            setFileParsing(false);
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                } 
+                // Classic text fallback hook
+                else {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        setResumeText(evt.target.result);
+                        setFileParsing(false);
+                        alert("Text document Extracted Successfully!");
+                    };
+                    reader.readAsText(file);
+                }
             };
 
             const handleAnalyze = async () => {
-                if(!jdText || !resumeText) { alert('Please provide both JD and Resume text.'); return; }
-                if(!apiKey) { alert('Please enter your Gemini API Key in the top right header to analyze live.'); return; }
+                if(!jdText || !resumeText) { alert('Please provide both JD and Resume text architectures.'); return; }
+                if(keyStatus !== 'valid') { alert('Please validate your Gemini API Key first.'); return; }
                 
                 setStep('analyzing');
-                localStorage.setItem('gemini_api_key', apiKey);
                 
                 const prompt = `
-                    You are a Senior Recruitment Architect. Perform a strict ATS gap analysis.
+                    You are a Senior Recruitment Architect. Perform a rigorous ATS gap analysis to maximize candidate positioning structurally without hallucinating constraints.
                     
-                    Job Description:
+                    Below is the required reference mapping:
+                    
+                    [JOB_DESCRIPTION_START]
                     ${jdText}
+                    [JOB_DESCRIPTION_END]
                     
-                    Candidate Resume:
+                    [CANDIDATE_RESUME_START]
                     ${resumeText}
+                    [CANDIDATE_RESUME_END]
                     
-                    Output a strictly valid JSON object (NO markdown wrappers, NO \`\`\`json text, ONLY RAW PARSABLE JSON) with this exact structure:
+                    INSTRUCTION: Output a strictly valid JSON object algorithmically (NO markdown wrapping formats like \`\`\`json, ONLY RAW PARSABLE JSON BRACKETS) utilizing this identical structure:
                     {
-                        "score": [number from 0 to 100],
-                        "missList": ["skill 1", "skill 2"],
-                        "atsWarning": "string detailing any potential formatting warnings if resume is badly structured, or null if fine",
-                        "originalRole": "The candidate's current or latest title based exactly on their resume",
+                        "score": [number from 0 to 100 calculated rigorously],
+                        "missList": ["missing critical technical skill 1", "missing skill 2"],
+                        "atsWarning": "String detailing any potential formatting constraints detected regarding ATS schema limits safely null if unproblematic",
+                        "originalRole": "Extract the specific candidate's most recent title string representing the Soul",
                         "optimizedBullets": [
-                            { "original": "exact original bullet point", "optimized": "the STAR/XYZ formatted improvement utilizing strong action verbs but actively preventing hallucination of missing skills" }
+                            { 
+                                "original": "exact original sub-string from input resume", 
+                                "optimized": "The STAR format / active-verb oriented improvement directly mapping the JD requirements" 
+                            }
                         ],
-                        "coverLetter": "A confident 3-paragraph cover letter drawing specific links between the resume impact and the JD pain points",
+                        "coverLetter": "A confident 3-paragraph personalized letter seamlessly bridging a direct JD Pain Point to the user's authentic history.",
                         "suggestions": [
-                            { "title": "Metric Injection Request", "suggestion": "You said you did X, can you quantify it to Y%?" }
+                            { "title": "Quantification Request Limit", "suggestion": "You said you did X... quantify it to Y%." }
                         ]
                     }
                 `;
 
                 try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    // Inject directly into selected dynamic user model
+                    const endpoint = selectedModel.includes('models/') ? selectedModel : `models/${selectedModel}`;
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${endpoint}:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
@@ -114,64 +199,91 @@
                     if (data.error) throw new Error(data.error.message);
 
                     let rawResponse = data.candidates[0].content.parts[0].text;
-                    rawResponse = rawResponse.replace(/```json/g, '').replace(/```/g, ''); // Safely strip markdown wrapping
+                    rawResponse = rawResponse.replace(/```json/g, '').replace(/```/g, ''); 
                     
                     const parsed = JSON.parse(rawResponse);
                     setApiData(parsed);
                     setStep('results');
                 } catch (err) {
-                    alert("Analysis Failed: Check your API Key or Network Connection. " + err.message);
+                    alert("Analysis Flow Failed: " + err.message);
                     setStep('input');
                 }
             };
 
             const renderInputScreen = () => (
-                <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 animate-fade-in">
-                    <div className="flex justify-end items-center mb-[-2rem] relative z-10">
-                        <input 
-                            type="password" placeholder="Gemini API Key..." 
-                            value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-                            className="bg-white border border-slate-300 text-sm px-3 py-1.5 rounded-lg shadow-sm w-64 outline-none focus:ring-2 focus:ring-indigo-500" 
-                        />
+                <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 animate-fade-in relative">
+                    
+                    {/* Header Controls (API Key & Dynamic Model Pipeline Selector) */}
+                    <div className="flex flex-col md:flex-row justify-end items-center gap-3 absolute top-[-30px] right-0 z-10 w-full animate-fade-in">
+                        
+                        {keyStatus === 'valid' && availableModels.length > 0 && (
+                            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-300 shadow-sm">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Model:</span>
+                                <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)} className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer max-w-[200px]">
+                                    {availableModels.map(m => (
+                                        <option key={m.name} value={m.name}>{m.displayName}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                        
+                        <div className="relative flex items-center shadow-sm rounded-lg flex-1 md:flex-none justify-end w-full">
+                            <div className={`absolute left-3 w-2.5 h-2.5 rounded-full z-20 ${keyStatus === 'valid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]' : keyStatus === 'unverified' ? 'bg-red-500' : keyStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'}`}></div>
+                            <input 
+                                type="password" placeholder="Gemini API Key..." 
+                                value={apiKey} onChange={(e) => { setApiKey(e.target.value); setKeyStatus('unverified'); }}
+                                className="bg-white border border-slate-300 border-r-0 text-sm px-3 py-2 pl-8 rounded-l-lg w-full md:w-64 outline-none focus:ring-2 focus:ring-indigo-500 relative z-10" 
+                            />
+                            <button onClick={() => validateApiKey()} className="bg-indigo-600 text-white text-xs font-bold px-4 py-2.5 rounded-r-lg hover:bg-indigo-700 transition relative z-10">
+                                {keyStatus === 'checking' ? 'Verifying...' : 'Validate Key'}
+                            </button>
+                        </div>
                     </div>
                     
-                    <div className="text-center mb-4">
+                    <div className="text-center mb-6 mt-16 md:mt-10">
                         <h1 className="text-4xl font-extrabold tracking-tight text-slate-800">Soul-Preserving <span className="text-indigo-600">ATS AI</span></h1>
-                        <p className="text-slate-500 mt-2 font-medium max-w-2xl mx-auto">Upload your raw texts. Our Gemini 1.5 architecture will bypass ATS filters structurally, without hallucinating your professional identity.</p>
-                        <button onClick={handlePopulateMocks} className="mt-4 text-xs font-bold bg-slate-200 text-slate-600 px-4 py-1.5 rounded-full hover:bg-slate-300 transition">Test with Sample Data</button>
+                        <p className="text-slate-500 mt-3 text-sm font-medium max-w-2xl mx-auto">Upload your raw texts or PDF files. Our algorithmic architecture bypasses ATS extraction filters natively, shielding your authentic identity.</p>
+                        <button onClick={() => { setJdText("Looking for a Senior React dev capable of CI/CD architecture."); setResumeText("Built apps in React. Managed servers."); }} className="mt-4 text-xs font-bold bg-slate-200 text-slate-600 px-4 py-1.5 rounded-full hover:bg-slate-300 transition">Inject Mock Data</button>
                     </div>
 
                     <div className="grid lg:grid-cols-2 gap-8">
-                        <div className="glass-card p-6 flex flex-col">
-                            <h2 className="text-lg font-bold flex items-center gap-2 text-indigo-700 mb-4">📄 Target Job Description</h2>
+                        <div className="glass-card p-6 flex flex-col relative overflow-hidden">
+                            <h2 className="text-lg font-bold flex items-center gap-2 text-indigo-700 mb-4 tracking-tight">📄 Target Job Description</h2>
                             <textarea 
                                 value={jdText} onChange={e => setJdText(e.target.value)}
-                                placeholder="Paste the exact JD text here...&#10;&#10;We extract Hard Skills, KRAs, and Culture Keywords." 
-                                className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[350px] text-sm"
+                                placeholder="Paste the exact JD text formatting here...&#10;&#10;The Gemini Core model extracts architectural constraints autonomously." 
+                                className="flex-1 w-full bg-slate-50/50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[350px] text-sm relative z-10"
                             ></textarea>
                         </div>
 
-                        <div className="glass-card p-6 flex flex-col">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-bold flex items-center gap-2 text-blue-700">👤 Current Resume</h2>
+                        <div className="glass-card p-6 flex flex-col relative overflow-hidden">
+                            <div className="flex items-center justify-between mb-4 relative z-10">
+                                <h2 className="text-lg font-bold flex items-center gap-2 text-blue-700 tracking-tight">👤 Current Resume</h2>
                                 
-                                <button onClick={triggerFileUpload} className="text-xs font-bold bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition">
-                                    📁 Upload Text File
+                                <button onClick={triggerFileUpload} disabled={fileParsing} className={`text-xs font-bold px-4 py-2 rounded-lg transition border ${fileParsing ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 shadow-sm'}`}>
+                                    {fileParsing ? '⚙️ Parsing Document...' : '📁 Upload PDF / TXT'}
                                 </button>
-                                <input type="file" ref={fileInputRef} className="hidden" accept=".txt,.md,.csv" onChange={handleFileUpload} />
+                                <input type="file" ref={fileInputRef} className="hidden" accept=".txt,.md,.csv,.pdf,application/pdf" onChange={handleFileUpload} />
                             </div>
                             
                             <textarea 
-                                value={resumeText} onChange={e => setResumeText(e.target.value)}
-                                placeholder="Paste your raw resume text here, or click Upload to load a .txt extraction...&#10;&#10;We parse for Work History, Technical Stack, and Quantifiable Achievements." 
-                                className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[350px] text-sm"
+                                value={resumeText} onChange={e => setResumeText(e.target.value)} disabled={fileParsing}
+                                placeholder="Paste your raw resume text here, or seamlessly upload a PDF file using the button above for client-side extraction rendering.&#10;&#10;Our PDF.JS architecture pulls buffer layers natively." 
+                                className="flex-1 w-full bg-slate-50/50 border border-slate-200 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-[350px] text-sm relative z-10"
                             ></textarea>
+                            
+                            {fileParsing && (
+                                <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
+                                    <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+                                    <p className="mt-4 text-sm font-bold text-slate-700">Native PDF Extraction Running...</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     <div className="flex justify-center mt-6">
-                        <button onClick={handleAnalyze} className="shimmer-btn bg-slate-900 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-slate-800 transition shadow-xl mt-2 mb-10">
-                            Analyze & Align via Gemini →
+                        <button onClick={handleAnalyze} className={`shimmer-btn ${keyStatus === 'valid' ? 'bg-slate-900 shadow-xl shadow-slate-900/20' : 'bg-slate-400 cursor-not-allowed'} text-white px-10 py-5 rounded-xl font-bold text-lg transition tracking-wide mt-2 mb-10`}>
+                            Analyze & Align via Framework →
                         </button>
                     </div>
                 </div>
@@ -179,12 +291,12 @@
 
             const renderAnalyzing = () => (
                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-20 h-20 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin mb-8"></div>
-                    <h2 className="text-2xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Gemini LLM Processing...</h2>
-                    <ul className="text-slate-500 text-left space-y-3 font-medium">
-                        <li className="flex items-center gap-2">✅ Live Parsing technical artifacts...</li>
-                        <li className="flex items-center gap-2 text-indigo-600 font-bold">⏳ Mapping against Job Description constraints...</li>
-                        <li className="flex items-center gap-2 opacity-70">⚪ Enforcing "Truth Constraint" AI rewriting...</li>
+                    <div className="w-20 h-20 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin mb-8 shadow-lg"></div>
+                    <h2 className="text-3xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-slate-800 tracking-tight">Gemini LLM Processing...</h2>
+                    <ul className="text-slate-500 text-left space-y-4 font-medium mt-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md">
+                        <li className="flex items-center gap-3"><span className="text-xl">✅</span> Live Parsing technical artifacts...</li>
+                        <li className="flex items-center gap-3 text-indigo-700 font-bold"><span className="text-xl animate-pulse">⏳</span> Mapping against Job Description constraints...</li>
+                        <li className="flex items-center gap-3 opacity-60"><span className="text-xl">⚪</span> Enforcing "Truth Constraint" AI rewriting...</li>
                     </ul>
                 </div>
             );
@@ -193,61 +305,72 @@
                 if(!apiData) return null;
                 
                 return (
-                    <div className="w-full max-w-7xl mx-auto animate-fade-in">
-                        <div className="flex items-center gap-4 mb-6">
-                            <button onClick={() => setStep('input')} className="bg-white border border-slate-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-50 shadow-sm border-b-2">← Back to Inputs</button>
-                            <h1 className="text-2xl font-bold text-slate-800">Live Analysis Output</h1>
+                    <div className="w-full max-w-7xl mx-auto animate-fade-in relative z-10">
+                        <div className="flex items-center justify-between mb-8">
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => setStep('input')} className="bg-white border border-slate-200 px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-50 shadow-sm transition">← Return to Setup</button>
+                                <h1 className="text-2xl font-bold text-slate-900 hidden sm:block tracking-tight">LLM Extraction Core</h1>
+                            </div>
+                            <div className="text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full tracking-widest shadow-sm flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                                {selectedModel}
+                            </div>
                         </div>
 
                         <div className="flex flex-col lg:flex-row gap-6">
                             {/* Sidebar Navi */}
-                            <div className="w-full lg:w-64 flex flex-col gap-2">
-                                <button onClick={() => setActiveTab('score')} className={`text-left px-5 py-4 rounded-xl font-bold transition border ${activeTab === 'score' ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>📊 Gap Score</button>
-                                <button onClick={() => setActiveTab('diff')} className={`text-left px-5 py-4 rounded-xl font-bold transition border ${activeTab === 'diff' ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>⚖️ Live Diff Viewer</button>
-                                <button onClick={() => setActiveTab('cover')} className={`text-left px-5 py-4 rounded-xl font-bold transition border ${activeTab === 'cover' ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>✉️ Smart Cover Letter</button>
-                                <button onClick={() => setActiveTab('review')} className={`text-left px-5 py-4 rounded-xl font-bold transition border ${activeTab === 'review' ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>💡 Critical Review</button>
+                            <div className="w-full lg:w-64 flex flex-col gap-2.5 shrink-0">
+                                <button onClick={() => setActiveTab('score')} className={`text-left px-5 py-4 rounded-xl font-bold transition border tracking-tight ${activeTab === 'score' ? 'bg-slate-900 text-white border-slate-800 shadow-lg' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>📊 Gap Score Constraints</button>
+                                <button onClick={() => setActiveTab('diff')} className={`text-left px-5 py-4 rounded-xl font-bold transition border tracking-tight ${activeTab === 'diff' ? 'bg-slate-900 text-white border-slate-800 shadow-lg' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>⚖️ Interactive CLI Diff</button>
+                                <button onClick={() => setActiveTab('cover')} className={`text-left px-5 py-4 rounded-xl font-bold transition border tracking-tight ${activeTab === 'cover' ? 'bg-slate-900 text-white border-slate-800 shadow-lg' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>✉️ Contextual Letter Engine</button>
+                                <button onClick={() => setActiveTab('review')} className={`text-left px-5 py-4 rounded-xl font-bold transition border tracking-tight ${activeTab === 'review' ? 'bg-slate-900 text-white border-slate-800 shadow-lg' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`}>💡 Critical QA Verification</button>
                             </div>
 
                             {/* Content Area */}
-                            <div className="flex-1 glass-card p-6 md:p-8 min-h-[500px]">
+                            <div className="flex-1 glass-card p-6 md:p-10 min-h-[500px]">
                                 
                                 {/* SCORE TAB */}
                                 {activeTab === 'score' && (
                                     <div className="space-y-8 animate-fade-in">
-                                        <div className="flex flex-col md:flex-row items-center gap-8 border-b border-slate-100 pb-8">
-                                            <div className="w-48">
-                                                <svg viewBox="0 0 36 36" className="circular-chart text-indigo-600">
+                                        <div className="flex flex-col md:flex-row items-center gap-10 border-b border-slate-100 pb-10">
+                                            <div className="w-48 relative">
+                                                <svg viewBox="0 0 36 36" className="circular-chart text-indigo-600 drop-shadow-md">
                                                     <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                                                     <path className="circle" strokeDasharray={`${apiData.score}, 100`} stroke="currentColor" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                                                     <text x="18" y="20.35" className="percentage">{apiData.score}%</text>
                                                 </svg>
-                                                <p className="text-center text-sm font-bold text-slate-500 mt-2">ATS Match Velocity</p>
+                                                <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent pointer-events-none rounded-full"></div>
+                                                <p className="text-center text-xs font-bold text-slate-500 mt-4 tracking-widest uppercase">ATS Match Velocity</p>
                                             </div>
                                             <div className="flex-1">
-                                                <h3 className="text-xl font-bold mb-3">The "Miss List"</h3>
+                                                <h3 className="text-xl font-bold mb-4 tracking-tight">Systematic "Miss List" Tracker</h3>
                                                 {apiData.missList && apiData.missList.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-2 mb-6">
+                                                    <div className="flex flex-wrap gap-2.5 mb-6">
                                                         {apiData.missList.map((skill, idx) => (
-                                                            <span key={idx} className="bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-full text-xs font-bold">Missing: {skill}</span>
+                                                            <span key={idx} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-xs font-bold shadow-sm flex items-center gap-2">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>{skill}
+                                                            </span>
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <p className="text-sm text-green-600 font-bold mb-6">Incredible! No major missing skills detected mapped to JD.</p>
+                                                    <p className="text-sm bg-green-50 border border-green-200 p-4 rounded-xl text-green-700 font-bold mb-6 flex items-center gap-3">
+                                                        <span className="text-2xl">🏆</span> Incredible! No major missing hard skills detected against JD parameters.
+                                                    </p>
                                                 )}
                                                 
                                                 {apiData.atsWarning && (
-                                                    <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl mb-4">
-                                                        <h4 className="font-bold text-orange-800 flex items-center gap-2 mb-1">⚠️ ATS Warning Detected</h4>
-                                                        <p className="text-sm text-orange-700">{apiData.atsWarning}</p>
+                                                    <div className="p-5 bg-orange-50 border border-orange-200 rounded-xl mb-4 shadow-sm">
+                                                        <h4 className="font-bold text-orange-800 flex items-center gap-2 mb-2 tracking-tight">⚠️ Structural Warning Detected</h4>
+                                                        <p className="text-sm text-orange-700 leading-relaxed">{apiData.atsWarning}</p>
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
                                         
                                         <div>
-                                            <h3 className="text-lg font-bold mb-3 border-l-4 border-indigo-600 pl-3">"Truth Constraint" Audit Executed</h3>
-                                            <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                                Gemini explicitly re-wrote your experience using STAR formatting entirely mapped to authentic input constraints. <strong>I did not hallucinate the missing skills above into your diff output</strong> to prevent rejection during human review. Instead, check the "Review" tab mapping missing intersections.
+                                            <h3 className="text-lg font-bold mb-4 border-l-4 border-indigo-600 pl-4 tracking-tight">Model "Truth Constraint" Enforcement</h3>
+                                            <p className="text-sm text-slate-600 bg-slate-50 p-5 rounded-xl border border-slate-200 leading-relaxed shadow-sm">
+                                                The LLM explicitly re-wrote your experience schemas using STAR methodology precisely isolated to authentic input data logic. <strong>We refused to hallucinate the missing parameter skills into your rewrite diff</strong> to ensure algorithmic and human verification integrity.
                                             </p>
                                         </div>
                                     </div>
@@ -256,38 +379,53 @@
                                 {/* DIFF TAB */}
                                 {activeTab === 'diff' && (
                                     <div className="animate-fade-in flex flex-col h-full">
-                                        <h3 className="text-xl font-bold mb-2">Intelligent LLM Fine-Tuning</h3>
-                                        <p className="text-sm text-slate-500 mb-6">Your authentic identity mapped dynamically to STAR/XYZ methodologies optimized for algorithmic ATS consumption.</p>
+                                        <h3 className="text-2xl font-bold mb-2 tracking-tight">Autonomous LLM Fine-Tuning</h3>
+                                        <p className="text-sm text-slate-500 mb-6">Your identity mapped to aggressive STAR/XYZ methodologies optimized for algorithmic ingestion filters.</p>
                                         
                                         <div className="grid md:grid-cols-2 gap-6 flex-1">
                                             {/* Original Column */}
-                                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 overflow-y-auto max-h-[500px]">
-                                                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 border-b pb-2">Your Input Baseline</h4>
-                                                <div className="text-sm space-y-5 font-mono">
+                                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 overflow-y-auto max-h-[550px] shadow-inner">
+                                                <div className="flex items-center gap-2 mb-5 pb-3 border-b border-slate-200">
+                                                    <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+                                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Base Parameter Input</h4>
+                                                </div>
+                                                <div className="text-sm space-y-6 font-mono">
                                                     <div>
-                                                        <strong className="text-slate-700">{apiData.originalRole || "Current Role"}</strong>
+                                                        <strong className="text-slate-800 bg-white px-2 py-1 border border-slate-200 rounded">{apiData.originalRole || "Current Title Mapping"}</strong>
                                                     </div>
-                                                    <ul className="list-disc pl-4 space-y-3">
+                                                    <ul className="pl-2 space-y-4">
                                                         {apiData.optimizedBullets && apiData.optimizedBullets.map((b, i) => (
-                                                            <li key={i}><span className="diff-removed text-slate-500">{b.original}</span></li>
+                                                            <li key={i} className="flex gap-3">
+                                                                <span className="text-slate-300 mt-0.5">↳</span>
+                                                                <span className="diff-removed text-slate-600 p-1 bg-red-50 border-red-100 border rounded">{b.original}</span>
+                                                            </li>
                                                         ))}
                                                     </ul>
                                                 </div>
                                             </div>
 
                                             {/* Output Column */}
-                                            <div className="bg-white border text-slate-800 border-indigo-200 rounded-xl p-6 shadow-sm overflow-y-auto max-h-[500px] relative">
-                                                <div className="absolute top-4 right-4 bg-green-50 text-green-700 border border-green-200 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-sm">Optimized Output</div>
-                                                <h4 className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-4 border-b pb-2">ATS Recruiter-Ready Baseline</h4>
-                                                <div className="text-sm space-y-5 font-mono">
+                                            <div className="bg-slate-900 border text-slate-200 border-slate-800 rounded-2xl p-6 shadow-xl overflow-y-auto max-h-[550px] relative">
+                                                <div className="absolute top-5 right-5 bg-green-500/20 text-green-400 border border-green-500/30 text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-widest flex items-center gap-1.5">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                                                    ATS Output Link
+                                                </div>
+                                                <div className="flex items-center gap-2 mb-5 pb-3 border-b border-slate-700/50">
+                                                    <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                                                    <h4 className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Compiler Resulting Structure</h4>
+                                                </div>
+                                                <div className="text-sm space-y-6 font-mono">
                                                     <div>
-                                                        {/* The Soul logic preserving headers */}
-                                                        <strong className="text-slate-900">{apiData.originalRole || "Current Role"}</strong>
+                                                        <strong className="text-white bg-slate-800 px-2 py-1 border border-slate-700 rounded shadow-sm">{apiData.originalRole || "Current Title Mapping"}</strong>
                                                     </div>
-                                                    <ul className="list-square pl-5 space-y-4">
+                                                    <ul className="pl-2 space-y-5">
                                                         {apiData.optimizedBullets && apiData.optimizedBullets.map((b, i) => (
-                                                            <li key={i} className="pl-1">
-                                                                <span className="diff-added">{b.optimized}</span>
+                                                            <li key={i} className="flex gap-3">
+                                                                <span className="text-indigo-500 mt-0.5 font-bold">»</span>
+                                                                <span className="text-slate-100 p-0 leading-relaxed">
+                                                                    {/* Dynamically highlight parts that were changed natively if possible, or just color the text uniquely */}
+                                                                    <span className="bg-green-500/10 text-green-100 border border-green-500/20 px-2 py-0.5 rounded leading-relaxed inline-block">{b.optimized}</span>
+                                                                </span>
                                                             </li>
                                                         ))}
                                                     </ul>
@@ -300,10 +438,11 @@
                                 {/* COVER LETTER TAB */}
                                 {activeTab === 'cover' && (
                                     <div className="space-y-6 animate-fade-in max-w-4xl">
-                                        <h3 className="text-xl font-bold">Narrative Generation Loop</h3>
-                                        <p className="text-sm text-slate-500">A dynamically crafted, highly-personalized letter integrating your specific parsed bullet impacts securely against the JD parameters.</p>
+                                        <h3 className="text-2xl font-bold tracking-tight">Compiled Letter Engine Execution</h3>
+                                        <p className="text-sm text-slate-500 mb-8 border-l-2 border-slate-200 pl-3">Autonomously rendering a highly-personalized mapping logic bridging specific JD Pain Points against verified input truths.</p>
                                         
-                                        <div className="bg-white border border-slate-200 rounded-xl p-8 font-serif leading-loose text-[15px] text-slate-800 shadow-sm relative relative mt-6 whitespace-pre-wrap">
+                                        <div className="bg-white border text-[15px] border-slate-200 rounded-2xl p-8 md:p-10 font-serif leading-loose text-slate-700 shadow-md relative whitespace-pre-wrap">
+                                            <div className="absolute top-0 right-0 py-6 px-10 opacity-[0.03] text-8xl font-sans pointer-events-none">"</div>
                                             {apiData.coverLetter}
                                         </div>
                                     </div>
@@ -312,23 +451,29 @@
                                 {/* REVIEW TAB */}
                                 {activeTab === 'review' && (
                                     <div className="space-y-6 animate-fade-in">
-                                        <h3 className="text-xl font-bold">The Strategic Critique Toolkit</h3>
-                                        <p className="text-sm text-slate-500 mt-[-10px] mb-6">Missing context flagged by the LLM that requires human verification before injection.</p>
+                                        <h3 className="text-2xl font-bold tracking-tight">Dynamic QA Verification Framework</h3>
+                                        <p className="text-sm text-slate-500 mt-[-5px] mb-8 border-l-2 border-indigo-200 pl-3">Algorithmic flags detailing missing quantified constraints or parameter overrides needing human layer clarification.</p>
                                         
                                         <div className="space-y-5">
-                                            {apiData.suggestions && apiData.suggestions.map((suggestion, idx) => (
-                                                <div key={idx} className="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm flex gap-5 items-start transition hover:border-indigo-300">
-                                                    <div className="text-2xl mt-1 p-3 bg-slate-50 rounded-xl">💡</div>
-                                                    <div>
-                                                        <h4 className="font-bold text-slate-800 mb-2">{suggestion.title}</h4>
-                                                        <p className="text-sm text-slate-600 mb-4 leading-relaxed">{suggestion.suggestion}</p>
-                                                        <div className="flex gap-2">
-                                                            <input type="text" placeholder="Provide context here..." className="border border-slate-300 px-4 py-2 rounded-xl text-sm w-full max-w-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-slate-50" />
-                                                            <button className="bg-slate-900 text-white px-5 py-2 rounded-xl font-bold text-sm hover:bg-slate-800 shadow-md">Apply Update</button>
+                                            {apiData.suggestions && apiData.suggestions.length > 0 ? apiData.suggestions.map((suggestion, idx) => (
+                                                <div key={idx} className="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm flex gap-6 items-start transition hover:border-indigo-300 group">
+                                                    <div className="text-2xl mt-1 p-3.5 bg-slate-50 rounded-xl border border-slate-100 shadow-inner group-hover:bg-indigo-50 transition">🔍</div>
+                                                    <div className="flex-1">
+                                                        <h4 className="font-bold text-slate-900 mb-2">{suggestion.title}</h4>
+                                                        <p className="text-sm text-slate-600 mb-5 leading-relaxed">{suggestion.suggestion}</p>
+                                                        <div className="flex flex-col sm:flex-row gap-3">
+                                                            <input type="text" placeholder="Upload specific parameter context here..." className="border border-slate-300 px-4 py-2.5 rounded-xl text-sm w-full outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-slate-50 shadow-inner" />
+                                                            <button className="bg-slate-900 text-white shrink-0 px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-800 shadow-md transition whitespace-nowrap">Commit Update</button>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            ))}
+                                            )) : (
+                                                <div className="p-8 bg-green-50 border border-green-200 rounded-2xl text-center">
+                                                    <span className="text-4xl mb-4 block">✅</span>
+                                                    <h4 className="font-bold text-green-800 mb-2">Metrics Fully Saturated</h4>
+                                                    <p className="text-sm text-green-700">No further human clarification required. Your parameters align robustly.</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -340,10 +485,9 @@
             };
 
             return (
-                <div className="min-h-screen p-4 md:p-8 text-slate-800 pb-20">
-                    <div className="max-w-7xl mx-auto mb-6 flex justify-between items-center opacity-70 hover:opacity-100 transition-opacity">
-                        <div className="text-xs font-bold tracking-widest uppercase text-slate-400">Gemini Native AI Architecture</div>
-                    </div>
+                <div className="min-h-screen p-4 md:p-8 text-slate-800 pb-20 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-indigo-50 rounded-full blur-3xl opacity-50 -z-10 translate-x-[40%] -translate-y-[40%] pointer-events-none"></div>
+                    
                     {step === 'input' && renderInputScreen()}
                     {step === 'analyzing' && renderAnalyzing()}
                     {step === 'results' && renderResults()}
@@ -356,9 +500,8 @@
     </script>
 
     <style>
-        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        /* Custom list style */
+        .animate-fade-in { animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
         .list-square { list-style-type: square; }
     </style>
 </body>
