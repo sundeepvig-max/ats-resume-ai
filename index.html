@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATS Resume Analyzer & Enhancer</title>
+    <title>CareerForge AI | Next-Gen ATS Suite</title>
     <!-- Zero-Build Environment -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -661,9 +661,9 @@
 
                         <div className={`p-6 border-b border-slate-100 dark:border-slate-800 relative flex items-center h-[85px] ${isSidebarCollapsed ? 'md:justify-center' : 'justify-between'}`}>
                             {(!isSidebarCollapsed || isMobileMenuOpen) && (
-                                <h1 onClick={() => navTo('home')} className="text-lg font-extrabold text-slate-900 dark:text-white leading-tight overflow-hidden whitespace-nowrap cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                                    ATS Resume <br />
-                                    <span className="text-indigo-600 dark:text-indigo-400">Analyzer</span>
+                                <h1 onClick={() => navTo('home')} className="text-xl font-extrabold text-slate-900 dark:text-white leading-tight overflow-hidden whitespace-nowrap cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors tracking-tight">
+                                    CareerForge <br />
+                                    <span className="text-indigo-600 dark:text-indigo-400 text-lg">AI Suite</span>
                                 </h1>
                             )}
                             {(isSidebarCollapsed && !isMobileMenuOpen) && (
@@ -1033,7 +1033,7 @@
                     
                     {/* Mobile Top Header */}
                     <div className="md:hidden w-full h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 fixed top-0 left-0 z-30 flex items-center justify-between px-6 shadow-sm">
-                        <div onClick={() => navTo('home')} className="font-extrabold text-indigo-600 dark:text-indigo-400 text-xl cursor-pointer tracking-tight">AuraHome<span className="text-slate-800 dark:text-white">AI</span></div>
+                        <div onClick={() => navTo('home')} className="font-extrabold text-indigo-600 dark:text-indigo-400 text-xl cursor-pointer tracking-tight">CareerForge<span className="text-slate-800 dark:text-white">AI</span></div>
                         <button onClick={() => setIsMobileMenuOpen(true)} className="text-2xl pt-1 pb-1 px-2 -mr-2 text-slate-800 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">☰</button>
                     </div>
 
@@ -1044,8 +1044,8 @@
 
                         {currentView === 'home' && (
                             <div className="w-full max-w-4xl mx-auto animate-fade-in pt-20 pb-20 text-center">
-                                <h1 className="text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-6">Welcome to <span className="text-indigo-600 dark:text-indigo-400">AuraHome AI</span> Resume Engine</h1>
-                                <p className="text-xl text-slate-600 dark:text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed">Your end-to-end local platform for ruthlessly analyzing and professionally formatting your resume to bypass ATS filters.</p>
+                                <h1 className="text-5xl md:text-6xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-6">Welcome to <span className="text-indigo-600 dark:text-indigo-400">CareerForge AI</span></h1>
+                                <p className="text-xl text-slate-600 dark:text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed">Your end-to-end local platform for ruthlessly analyzing, building, and simulating your entire job application to bypass modern ATS filters.</p>
                                 <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
                                     <button onClick={() => setCurrentView('compare')} className="shimmer-btn bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition w-full sm:w-auto">Compare vs JD →</button>
                                     <button onClick={() => setCurrentView('optimize')} className="bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-100 dark:border-slate-700 px-8 py-4 rounded-xl font-bold text-lg hover:border-indigo-300 dark:hover:border-indigo-500 shadow-sm transition w-full sm:w-auto">Optimize Resume ✨</button>
